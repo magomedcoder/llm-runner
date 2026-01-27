@@ -12,7 +12,9 @@ package llama
 import "C"
 import (
 	"fmt"
+	"os"
 	"strings"
+	"sync"
 	"unsafe"
 )
 
@@ -103,8 +105,36 @@ func cStrLen(b []byte) int {
 	return len(b)
 }
 
+func (l *LLama) LoadState(state string) error {
+	d := C.CString(state)
+	w := C.CString("rb")
+	result := C.load_state(l.state, d, w)
+	defer C.free(unsafe.Pointer(d))
+	defer C.free(unsafe.Pointer(w))
+	if result != 0 {
+		return fmt.Errorf("состояние загрузки не удалось")
+	}
+
+	return nil
+}
+
+func (l *LLama) SaveState(dst string) error {
+	d := C.CString(dst)
+	w := C.CString("wb")
+	C.save_state(l.state, d, w)
+	defer C.free(unsafe.Pointer(d))
+	defer C.free(unsafe.Pointer(w))
+	_, err := os.Stat(dst)
+
+	return err
+}
+
 func (l *LLama) Predict(text string, opts ...PredictOption) (string, error) {
 	po := NewPredictOptions(opts...)
+	if po.TokenCallback != nil {
+		setCallback(l.state, po.TokenCallback)
+	}
+
 	input := C.CString(text)
 	defer C.free(unsafe.Pointer(input))
 	if po.Tokens == 0 {
@@ -185,7 +215,41 @@ func (l *LLama) Predict(text string, opts ...PredictOption) (string, error) {
 		res = strings.TrimRight(res, s)
 	}
 
+	if po.TokenCallback != nil {
+		setCallback(l.state, nil)
+	}
+
 	return res, nil
+}
+
+func (l *LLama) SetTokenCallback(callback func(token string) bool) {
+	setCallback(l.state, callback)
+}
+
+var (
+	callbacksMu sync.RWMutex
+	callbacks   = map[uintptr]func(string) bool{}
+)
+
+//export tokenCallback
+func tokenCallback(statePtr unsafe.Pointer, token *C.char) bool {
+	callbacksMu.RLock()
+	defer callbacksMu.RUnlock()
+	if cb, ok := callbacks[uintptr(statePtr)]; ok {
+		return cb(C.GoString(token))
+	}
+
+	return true
+}
+
+func setCallback(statePtr unsafe.Pointer, callback func(string) bool) {
+	callbacksMu.Lock()
+	defer callbacksMu.Unlock()
+	if callback == nil {
+		delete(callbacks, uintptr(statePtr))
+	} else {
+		callbacks[uintptr(statePtr)] = callback
+	}
 }
 
 func (l *LLama) TokenizeString(text string, opts ...PredictOption) (int32, []int32, error) {
@@ -245,6 +309,7 @@ func (l *LLama) TokenizeString(text string, opts ...PredictOption) (int32, []int
 	)
 	defer C.llama_free_params(params)
 	tokRet := C.llama_tokenize_string(params, l.state, (*C.int)(unsafe.Pointer(&out[0])))
+
 	if tokRet < 0 {
 		return int32(tokRet), nil, fmt.Errorf("tokenize вернул %d", tokRet)
 	}
@@ -261,8 +326,9 @@ func (l *LLama) TokenizeString(text string, opts ...PredictOption) (int32, []int
 
 func (l *LLama) Embeddings(text string, opts ...PredictOption) ([]float32, error) {
 	if !l.embeddings {
-		return nil, fmt.Errorf("модель не загружена с эмбеддингами\n")
+		return nil, fmt.Errorf("модель не загружена с эмбеддингами")
 	}
+
 	po := NewPredictOptions(opts...)
 	input := C.CString(text)
 	defer C.free(unsafe.Pointer(input))
@@ -343,6 +409,7 @@ func (l *LLama) TokenEmbeddings(tokens []int, opts ...PredictOption) ([]float32,
 	if !l.embeddings {
 		return nil, fmt.Errorf("модель не загружена с эмбеддингами")
 	}
+
 	po := NewPredictOptions(opts...)
 	outSize := po.Tokens
 	if outSize == 0 {

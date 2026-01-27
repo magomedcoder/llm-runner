@@ -55,3 +55,7 @@ func SetTemperature(temp float32) PredictOption {
 func SetStopWords(stop ...string) PredictOption {
 	return func(p *PredictOptions) { p.StopPrompts = stop }
 }
+
+func SetTokenCallback(fn func(string) bool) PredictOption {
+	return func(p *PredictOptions) { p.TokenCallback = fn }
+}

@@ -102,6 +102,12 @@ int get_token_embeddings(
     float *res_embeddings
 );
 
+int load_state(void *ctx, char *statefile, char *modes);
+
+void save_state(void *ctx, char *dst, char *modes);
+
+extern unsigned char tokenCallback(void *, char *);
+
 #ifdef __cplusplus
 }
 #endif
