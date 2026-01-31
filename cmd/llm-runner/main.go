@@ -6,12 +6,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	runner "github.com/magomedcoder/llm-runner"
 	"github.com/magomedcoder/llm-runner/config"
 	"github.com/magomedcoder/llm-runner/logger"
 	"github.com/magomedcoder/llm-runner/pb"
+	"github.com/magomedcoder/llm-runner/provider"
 	"google.golang.org/grpc"
-
-	runner "github.com/magomedcoder/llm-runner"
 )
 
 func main() {
@@ -21,8 +21,13 @@ func main() {
 		os.Exit(1)
 	}
 	logger.Default.SetLevel(logger.ParseLevel(cfg.Log.Level))
-	logger.I("listen_addr=%s", cfg.ListenAddr)
+	textProvider, err := provider.NewTextProvider(cfg)
+	if err != nil {
+		logger.E("text provider: %v", err)
+		os.Exit(1)
+	}
 
+	runnerServer := runner.NewServer(textProvider, cfg.MaxConcurrentGenerations)
 	lis, err := net.Listen("tcp", cfg.ListenAddr)
 	if err != nil {
 		logger.E("listen: %v", err)
@@ -32,7 +37,8 @@ func main() {
 	defer lis.Close()
 
 	grpcServer := grpc.NewServer()
-	pb.RegisterLLMRunnerServiceServer(grpcServer, runner.NewServer())
+
+	pb.RegisterLLMRunnerServiceServer(grpcServer, runnerServer)
 	go func() {
 		logger.I("listening on %s", cfg.ListenAddr)
 		_ = grpcServer.Serve(lis)
