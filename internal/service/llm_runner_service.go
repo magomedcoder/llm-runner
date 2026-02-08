@@ -1,0 +1,104 @@
+package service
+
+import (
+	"context"
+	"fmt"
+	"hash/fnv"
+
+	"github.com/magomedcoder/gen/api/pb/llmrunner"
+	"github.com/magomedcoder/gen/internal/domain"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
+)
+
+// LLMRunnerService — gRPC-клиент к llm-runner по api llmrunner.proto.
+type LLMRunnerService struct {
+	client llmrunner.LLMRunnerServiceClient
+	conn   *grpc.ClientConn
+	model  string
+}
+
+// NewLLMRunnerService создаёт клиент к llm-runner по адресу address (например "localhost:50052").
+func NewLLMRunnerService(address, model string) (*LLMRunnerService, error) {
+	if address == "" {
+		address = "localhost:50052"
+	}
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return nil, fmt.Errorf("подключение к llm-runner: %w", err)
+	}
+	return &LLMRunnerService{
+		client: llmrunner.NewLLMRunnerServiceClient(conn),
+		conn:   conn,
+		model:  model,
+	}, nil
+}
+
+// Close закрывает соединение с llm-runner.
+func (s *LLMRunnerService) Close() error {
+	return s.conn.Close()
+}
+
+func sessionIDToInt64(sessionID string) int64 {
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(sessionID))
+	return int64(h.Sum64())
+}
+
+func (s *LLMRunnerService) CheckConnection(ctx context.Context) (bool, error) {
+	resp, err := s.client.CheckConnection(ctx, &llmrunner.Empty{})
+	if err != nil {
+		return false, fmt.Errorf("llm-runner CheckConnection: %w", err)
+	}
+	return resp.IsConnected, nil
+}
+
+func (s *LLMRunnerService) SendMessage(ctx context.Context, sessionID string, messages []*domain.Message) (chan string, error) {
+	req := &llmrunner.SendMessageRequest{
+		SessionId: sessionIDToInt64(sessionID),
+		Messages:  domainMessagesToProto(messages),
+		Model:     s.model,
+	}
+
+	stream, err := s.client.SendMessage(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner SendMessage: %w", err)
+	}
+
+	output := make(chan string, 100)
+
+	go func() {
+		defer close(output)
+		for {
+			msg, err := stream.Recv()
+			if err != nil {
+				return
+			}
+			if msg.Content != "" {
+				select {
+				case <-ctx.Done():
+					return
+				case output <- msg.Content:
+				}
+			}
+			if msg.Done {
+				return
+			}
+		}
+	}()
+
+	return output, nil
+}
+
+func domainMessagesToProto(messages []*domain.Message) []*llmrunner.ChatMessage {
+	out := make([]*llmrunner.ChatMessage, len(messages))
+	for i, m := range messages {
+		out[i] = &llmrunner.ChatMessage{
+			Id:        int64(i + 1),
+			Content:   m.Content,
+			Role:      string(m.Role),
+			CreatedAt: m.CreatedAt.Unix(),
+		}
+	}
+	return out
+}

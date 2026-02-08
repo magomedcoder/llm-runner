@@ -3,20 +3,20 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"net"
-	"os"
-	"os/signal"
-	"syscall"
-
 	"github.com/magomedcoder/gen/api/pb"
 	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/handler"
+	"github.com/magomedcoder/gen/internal/repository"
 	"github.com/magomedcoder/gen/internal/repository/postgres"
 	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
 )
 
 func main() {
@@ -34,17 +34,26 @@ func main() {
 
 	userRepo := postgres.NewUserRepository(db)
 	tokenRepo := postgres.NewTokenRepository(db)
+	sessionRepo := postgres.NewChatSessionRepository(db)
+	messageRepo := postgres.NewMessageRepository(db)
 
 	jwtService := service.NewJWTService(cfg)
-	passwordService := service.NewPasswordService()
+	llmRepo, err := repository.NewLLMRunnerRepository(cfg.LLMRunner.Address, cfg.LLMRunner.Model)
+	if err != nil {
+		log.Fatalf("Ошибка подключения к llm-runner: %v", err)
+	}
+	defer llmRepo.Close()
 
-	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, jwtService, passwordService)
+	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, jwtService)
+	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, llmRepo)
 
 	authHandler := handler.NewAuthHandler(authUseCase)
+	chatHandler := handler.NewChatHandler(chatUseCase, authUseCase)
 
 	grpcServer := grpc.NewServer()
 
 	pb.RegisterAuthServiceServer(grpcServer, authHandler)
+	pb.RegisterChatServiceServer(grpcServer, chatHandler)
 
 	reflection.Register(grpcServer)
 

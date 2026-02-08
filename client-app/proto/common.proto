@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package common;
+
+option go_package = "github.com/magomedcoder/gen/api/pb;commonpb";
+
+message User {
+  string id = 1;
+  string email = 2;
+  string name = 3;
+}

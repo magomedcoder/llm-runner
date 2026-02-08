@@ -5,9 +5,10 @@ import (
 )
 
 type Config struct {
-	Server   ServerConfig
-	Database DatabaseConfig
-	JWT      JWTConfig
+	Server    ServerConfig
+	Database  DatabaseConfig
+	JWT       JWTConfig
+	LLMRunner LLMRunnerConfig
 }
 
 type ServerConfig struct {
@@ -26,8 +27,12 @@ type JWTConfig struct {
 	RefreshTTL    time.Duration
 }
 
-func Load() (*Config, error) {
+type LLMRunnerConfig struct {
+	Address string // gRPC-адрес llm-runner, например "localhost:50052"
+	Model   string
+}
 
+func Load() (*Config, error) {
 	config := &Config{
 		Server: ServerConfig{
 			Port: "50051",
@@ -41,6 +46,10 @@ func Load() (*Config, error) {
 			RefreshSecret: "gen",
 			AccessTTL:     15 * time.Minute,
 			RefreshTTL:    7 * 24 * time.Hour,
+		},
+		LLMRunner: LLMRunnerConfig{
+			Address: "localhost:50052",
+			Model:   "default",
 		},
 	}
 

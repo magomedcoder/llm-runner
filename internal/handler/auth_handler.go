@@ -2,17 +2,13 @@ package handler
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
+	"github.com/magomedcoder/gen/api/pb"
+	"github.com/magomedcoder/gen/internal/usecase"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-	"google.golang.org/protobuf/types/known/timestamppb"
-
-	"github.com/magomedcoder/gen/api/pb"
-	"github.com/magomedcoder/gen/internal/domain"
-	"github.com/magomedcoder/gen/internal/usecase"
 )
 
 type AuthHandler struct {
@@ -78,20 +74,11 @@ func (a *AuthHandler) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.Lo
 		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 
-	if err := a.authUseCase.Logout(ctx, user.ID); err != nil {
+	if err := a.authUseCase.Logout(ctx, user.Id); err != nil {
 		return nil, status.Error(codes.Internal, "не удалось выйти из системы")
 	}
 
 	return &pb.LogoutResponse{
 		Success: true,
 	}, nil
-}
-
-func (a *AuthHandler) userToProto(user *domain.User) *pb.User {
-	return &pb.User{
-		Id:        strconv.Itoa(user.ID),
-		Email:     user.Email,
-		Name:      user.Name,
-		CreatedAt: timestamppb.New(user.CreatedAt),
-	}
 }
