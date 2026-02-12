@@ -12,6 +12,8 @@ type UserRepository interface {
 	GetByUsername(ctx context.Context, username string) (*User, error)
 
 	Update(ctx context.Context, user *User) error
+
+	List(ctx context.Context, page, pageSize int32) ([]*User, int32, error)
 }
 
 type TokenRepository interface {

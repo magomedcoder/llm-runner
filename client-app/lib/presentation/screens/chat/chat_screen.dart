@@ -5,10 +5,12 @@ import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_event.dart';
+import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
+import 'package:gen/presentation/screens/admin/users_admin_screen.dart';
 import 'package:gen/presentation/screens/chat/widgets/sessions_sidebar.dart';
 import 'package:gen/presentation/widgets/chat_bubble.dart';
 
@@ -373,6 +375,23 @@ class _ChatScreenState extends State<ChatScreen> {
                           width: 16,
                           height: 16,
                           child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
+                      );
+                    }
+                    return const SizedBox();
+                  },
+                ),
+                BlocBuilder<AuthBloc, AuthState>(
+                  builder: (context, authState) {
+                    final user = authState.user;
+                    if (user != null && user.isAdmin) {
+                      return IconButton(
+                        icon: const Icon(Icons.people_outline),
+                        tooltip: 'Пользователи',
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const UsersAdminScreen(),
+                          ),
                         ),
                       );
                     }

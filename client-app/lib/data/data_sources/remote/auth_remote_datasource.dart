@@ -11,6 +11,8 @@ abstract class IAuthRemoteDataSource {
   Future<AuthTokens> refreshToken(String refreshToken);
 
   Future<void> logout();
+
+  Future<void> changePassword(String oldPassword, String newPassword);
 }
 
 class AuthRemoteDataSource implements IAuthRemoteDataSource {
@@ -34,6 +36,8 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
         id: response.user.id,
         username: response.user.username,
         name: response.user.name,
+        surname: response.user.surname,
+        role: response.user.role,
       );
 
       final tokens = AuthTokens(
@@ -90,6 +94,27 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
       throw NetworkFailure('Ошибка gRPC при выходе: ${e.message}');
     } catch (e) {
       throw ApiFailure('Ошибка выхода: $e');
+    }
+  }
+
+  @override
+  Future<void> changePassword(String oldPassword, String newPassword) async {
+    try {
+      final request = grpc.ChangePasswordRequest()
+        ..oldPassword = oldPassword
+        ..newPassword = newPassword;
+
+      await _client.changePassword(
+        request,
+        options: CallOptions(timeout: const Duration(seconds: 10)),
+      );
+    } on GrpcError catch (e) {
+      if (e.code == StatusCode.invalidArgument) {
+        throw ApiFailure(e.message ?? 'Неверные данные');
+      }
+      throw NetworkFailure('Ошибка gRPC при смене пароля: ${e.message}');
+    } catch (e) {
+      throw ApiFailure('Ошибка смены пароля: $e');
     }
   }
 }

@@ -150,11 +150,11 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     int pageSize,
   ) async {
     try {
-      final request = grpc.ListSessionsRequest()
+      final request = grpc.GetSessionsRequest()
         ..page = page
         ..pageSize = pageSize;
 
-      final response = await _client.listSessions(
+      final response = await _client.getSessions(
         request,
         options: CallOptions(timeout: const Duration(seconds: 10)),
       );

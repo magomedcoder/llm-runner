@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "github.com/magomedcoder/gen/api/pb";
+
+import "common.proto";
+
+service UserService {
+  rpc GetUsers(GetUsersRequest) returns (GetUsersResponse);
+
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+
+  rpc EditUser(EditUserRequest) returns (EditUserResponse);
+}
+
+message GetUsersRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message GetUsersResponse {
+  repeated common.User users = 1;
+  int32 total = 2;
+}
+
+message CreateUserRequest {
+  string username = 1;
+  string password = 2;
+  string name = 3;
+  string surname = 4;
+  int32 role = 5;
+}
+
+message CreateUserResponse {
+  common.User user = 1;
+}
+
+message EditUserRequest {
+  string id = 1;
+  string username = 2;
+  string password = 3;
+  string name = 4;
+  string surname = 5;
+  int32 role = 6;
+}
+
+message EditUserResponse {
+  common.User user = 1;
+}

@@ -1,20 +1,23 @@
 package handler
 
 import (
+	"strconv"
+
 	"github.com/magomedcoder/gen/api/pb"
 	"github.com/magomedcoder/gen/internal/domain"
-	"strconv"
 )
 
-func (a *AuthHandler) userToProto(user *domain.User) *pb.User {
+func userToProto(user *domain.User) *pb.User {
 	return &pb.User{
 		Id:       strconv.Itoa(user.Id),
 		Username: user.Username,
 		Name:     user.Name,
+		Surname:  user.Surname,
+		Role:     int32(user.Role),
 	}
 }
 
-func (h *ChatHandler) sessionToProto(session *domain.ChatSession) *pb.ChatSession {
+func (c *ChatHandler) sessionToProto(session *domain.ChatSession) *pb.ChatSession {
 	return &pb.ChatSession{
 		Id:        session.Id,
 		Title:     session.Title,
@@ -23,7 +26,7 @@ func (h *ChatHandler) sessionToProto(session *domain.ChatSession) *pb.ChatSessio
 	}
 }
 
-func (h *ChatHandler) messageToProto(msg *domain.Message) *pb.ChatMessage {
+func (c *ChatHandler) messageToProto(msg *domain.Message) *pb.ChatMessage {
 	return &pb.ChatMessage{
 		Id:        msg.Id,
 		Content:   msg.Content,

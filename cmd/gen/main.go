@@ -46,14 +46,17 @@ func main() {
 
 	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, jwtService)
 	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, llmRepo)
+	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	authHandler := handler.NewAuthHandler(authUseCase)
 	chatHandler := handler.NewChatHandler(chatUseCase, authUseCase)
+	userHandler := handler.NewUserHandler(userUseCase, authUseCase)
 
 	grpcServer := grpc.NewServer()
 
 	pb.RegisterAuthServiceServer(grpcServer, authHandler)
 	pb.RegisterChatServiceServer(grpcServer, chatHandler)
+	pb.RegisterUserServiceServer(grpcServer, userHandler)
 
 	reflection.Register(grpcServer)
 
