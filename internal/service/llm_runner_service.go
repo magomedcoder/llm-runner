@@ -11,14 +11,12 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// LLMRunnerService — gRPC-клиент к llm-runner по api llmrunner.proto.
 type LLMRunnerService struct {
 	client llmrunner.LLMRunnerServiceClient
 	conn   *grpc.ClientConn
 	model  string
 }
 
-// NewLLMRunnerService создаёт клиент к llm-runner по адресу address (например "localhost:50052").
 func NewLLMRunnerService(address, model string) (*LLMRunnerService, error) {
 	if address == "" {
 		address = "localhost:50052"
@@ -34,7 +32,6 @@ func NewLLMRunnerService(address, model string) (*LLMRunnerService, error) {
 	}, nil
 }
 
-// Close закрывает соединение с llm-runner.
 func (s *LLMRunnerService) Close() error {
 	return s.conn.Close()
 }

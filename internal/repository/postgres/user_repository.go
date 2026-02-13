@@ -3,15 +3,15 @@ package postgres
 import (
 	"context"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/magomedcoder/gen/internal/domain"
 )
 
 type userRepository struct {
-	db *pgx.Conn
+	db *pgxpool.Pool
 }
 
-func NewUserRepository(db *pgx.Conn) domain.UserRepository {
+func NewUserRepository(db *pgxpool.Pool) domain.UserRepository {
 	return &userRepository{db: db}
 }
 
@@ -57,6 +57,7 @@ func (u *userRepository) GetById(ctx context.Context, id int) (*domain.User, err
 	}
 
 	user.Role = domain.UserRole(role)
+
 	return &user, nil
 }
 
@@ -83,6 +84,7 @@ func (u *userRepository) GetByUsername(ctx context.Context, username string) (*d
 	}
 
 	user.Role = domain.UserRole(role)
+
 	return &user, nil
 }
 

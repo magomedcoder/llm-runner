@@ -28,7 +28,7 @@ type JWTConfig struct {
 }
 
 type LLMRunnerConfig struct {
-	Address string // gRPC-адрес llm-runner, например "localhost:50052"
+	Address string
 	Model   string
 }
 
