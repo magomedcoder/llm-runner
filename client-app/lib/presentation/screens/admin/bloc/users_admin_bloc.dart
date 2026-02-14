@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/domain/usecases/users/create_user_usecase.dart';
-import 'package:gen/domain/usecases/users/edit_user_usecase.dart';
 import 'package:gen/domain/usecases/users/get_users_usecase.dart';
+import 'package:gen/domain/usecases/users/edit_user_usecase.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_event.dart';
 import 'package:gen/presentation/screens/admin/bloc/users_admin_state.dart';
 
@@ -31,7 +31,13 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
         page: event.page,
         pageSize: event.pageSize,
       );
-      emit(state.copyWith(isLoading: false, users: users, error: null));
+      emit(state.copyWith(
+        isLoading: false,
+        users: users,
+        error: null,
+        currentPage: event.page,
+        pageSize: event.pageSize,
+      ));
     } catch (e) {
       emit(
         state.copyWith(
@@ -55,8 +61,12 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
         surname: event.surname,
         role: event.role,
       );
-      final users = await getUsersUseCase(page: 1, pageSize: 50);
-      emit(state.copyWith(isLoading: false, users: users, error: null));
+
+      add(UsersAdminLoadRequested(
+        page: state.currentPage,
+        pageSize:
+        state.pageSize,
+      ));
     } catch (e) {
       emit(
         state.copyWith(
@@ -81,8 +91,11 @@ class UsersAdminBloc extends Bloc<UsersAdminEvent, UsersAdminState> {
         surname: event.surname,
         role: event.role,
       );
-      final users = await getUsersUseCase(page: 1, pageSize: 50);
-      emit(state.copyWith(isLoading: false, users: users, error: null));
+
+      add(UsersAdminLoadRequested(
+        page: state.currentPage,
+        pageSize: state.pageSize,
+      ));
     } catch (e) {
       emit(
         state.copyWith(

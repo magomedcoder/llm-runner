@@ -16,6 +16,20 @@ class UsersAdminScreen extends StatefulWidget {
 }
 
 class _UsersAdminScreenState extends State<UsersAdminScreen> {
+  late final UsersAdminBloc _usersAdminBloc;
+
+  @override
+  void initState() {
+    super.initState();
+    _usersAdminBloc = di.sl<UsersAdminBloc>()..add(const UsersAdminLoadRequested());
+  }
+
+  @override
+  void dispose() {
+    _usersAdminBloc.close();
+    super.dispose();
+  }
+
   void _showAccessDenied() {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -32,7 +46,7 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
     return state.isAuthenticated && user?.isAdmin == true;
   }
 
-  void _createUserDialog(AuthState authState) {
+  Future<void> _createUserDialog(AuthState authState) async {
     if (!_isAdmin(authState)) {
       _showAccessDenied();
       return;
@@ -45,120 +59,130 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
     int selectedRole = 0;
     final formKey = GlobalKey<FormState>();
 
-    showDialog<void>(
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Создать пользователя'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: usernameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Логин',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Введите логин';
-                      }
-
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Пароль',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Введите пароль';
-                      }
-
-                      if (value.trim().length < 6) {
-                        return 'Минимум 6 символов';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: selectedRole,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Создать пользователя'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Логин',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Введите логин';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Пароль',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Введите пароль';
+                  }
+                  if (value.trim().length < 6) {
+                    return 'Минимум 6 символов';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              StatefulBuilder(
+                builder: (context, setInnerState) {
+                  return DropdownButtonFormField<int>(
+                    initialValue: selectedRole,
                     decoration: const InputDecoration(
                       labelText: 'Роль',
                       border: OutlineInputBorder(),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 0, child: Text('Пользователь')),
-                      DropdownMenuItem(value: 1, child: Text('Администратор')),
+                      DropdownMenuItem(
+                        value: 0,
+                        child: Text('Пользователь'),
+                      ),
+                      DropdownMenuItem(
+                        value: 1,
+                        child: Text('Администратор'),
+                      ),
                     ],
                     onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() => selectedRole = value);
-                      }
+                      if (value == null) return;
+                      setInnerState(() {
+                        selectedRole = value;
+                      });
                     },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Имя',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Введите имя';
-                      }
-
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: surnameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Фамилия',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Имя',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Введите имя';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: surnameController,
+                decoration: const InputDecoration(
+                  labelText: 'Фамилия',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                context.read<UsersAdminBloc>().add(UsersAdminCreateRequested(
-                    username: usernameController.text.trim(),
-                    password: passwordController.text.trim(),
-                    name: nameController.text.trim(),
-                    surname: surnameController.text.trim(),
-                    role: selectedRole,
-                ));
-                Navigator.of(ctx).pop();
-              },
-              child: const Text('Создать'),
-            ),
-          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) {
+                return;
+              }
+
+              _usersAdminBloc.add(
+                UsersAdminCreateRequested(
+                  username: usernameController.text.trim(),
+                  password: passwordController.text.trim(),
+                  name: nameController.text.trim(),
+                  surname: surnameController.text.trim(),
+                  role: selectedRole,
+                ),
+              );
+
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Создать'),
+          ),
+        ],
       ),
     );
   }
 
-  void _editUserDialog(AuthState authState, User user) {
+  Future<void> _editUserDialog(AuthState authState, User user) async {
     if (!_isAdmin(authState)) {
       _showAccessDenied();
       return;
@@ -171,124 +195,130 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
     int selectedRole = user.role;
     final formKey = GlobalKey<FormState>();
 
-    showDialog<void>(
+    await showDialog<void>(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('Редактировать пользователя'),
-          content: Form(
-            key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: usernameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Логин',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Введите логин';
-                      }
-
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: passwordController,
-                    obscureText: true,
-                    decoration: const InputDecoration(
-                      labelText: 'Новый пароль (необязательно)',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return null;
-                      }
-
-                      if (value.trim().length < 6) {
-                        return 'Минимум 6 символов';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: nameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Имя',
-                      border: OutlineInputBorder(),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Введите имя';
-                      }
-
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: surnameController,
-                    decoration: const InputDecoration(
-                      labelText: 'Фамилия',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    value: selectedRole,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Редактировать пользователя'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: usernameController,
+                decoration: const InputDecoration(
+                  labelText: 'Логин',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Введите логин';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: passwordController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Новый пароль (необязательно)',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) return null;
+                  if (value.trim().length < 6) return 'Минимум 6 символов';
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Имя',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Введите имя';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: surnameController,
+                decoration: const InputDecoration(
+                  labelText: 'Фамилия',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              StatefulBuilder(
+                builder: (context, setInnerState) {
+                  return DropdownButtonFormField<int>(
+                    initialValue: selectedRole,
                     decoration: const InputDecoration(
                       labelText: 'Роль',
                       border: OutlineInputBorder(),
                     ),
                     items: const [
-                      DropdownMenuItem(value: 0, child: Text('Пользователь')),
-                      DropdownMenuItem(value: 1, child: Text('Администратор')),
+                      DropdownMenuItem(
+                        value: 0,
+                        child: Text('Пользователь'),
+                      ),
+                      DropdownMenuItem(
+                        value: 1,
+                        child: Text('Администратор'),
+                      ),
                     ],
                     onChanged: (value) {
-                      if (value != null) {
-                        setDialogState(() => selectedRole = value);
-                      }
+                      if (value == null) return;
+                      setInnerState(() {
+                        selectedRole = value;
+                      });
                     },
-                  ),
-                ],
+                  );
+                },
               ),
-            ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(ctx).pop(),
-              child: const Text('Отмена'),
-            ),
-            FilledButton(
-              onPressed: () {
-                if (!formKey.currentState!.validate()) return;
-                context.read<UsersAdminBloc>().add(UsersAdminUpdateRequested(
-                    id: user.id,
-                    username: usernameController.text.trim(),
-                    password: passwordController.text.trim(),
-                    name: nameController.text.trim(),
-                    surname: surnameController.text.trim(),
-                    role: selectedRole,
-                ));
-                Navigator.of(ctx).pop();
-              },
-              child: const Text('Сохранить'),
-            ),
-          ],
         ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () {
+              if (!formKey.currentState!.validate()) {
+                return;
+              }
+
+              _usersAdminBloc.add(
+                UsersAdminUpdateRequested(
+                  id: user.id,
+                  username: usernameController.text.trim(),
+                  password: passwordController.text.trim(),
+                  name: nameController.text.trim(),
+                  surname: surnameController.text.trim(),
+                  role: selectedRole,
+                ),
+              );
+
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Сохранить'),
+          ),
+        ],
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => di.sl<UsersAdminBloc>()..add(const UsersAdminLoadRequested()),
+    return BlocProvider.value(
+      value: _usersAdminBloc,
       child: BlocBuilder<AuthBloc, AuthState>(
         builder: (context, authState) {
           final isAdminUser = _isAdmin(authState);
@@ -306,7 +336,9 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
                     ),
                   ),
                 );
-                context.read<UsersAdminBloc>().add(const UsersAdminClearError());
+                context.read<UsersAdminBloc>().add(
+                  const UsersAdminClearError(),
+                );
               }
             },
             child: Scaffold(
@@ -337,28 +369,32 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
                               padding: const EdgeInsets.all(12),
                               child: Text(
                                 'Этот раздел доступен только администратору.',
-                                style: Theme.of(context)
-                                    .textTheme
-                                    .bodyMedium
-                                    ?.copyWith(color: Theme.of(context).colorScheme.onErrorContainer),
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onErrorContainer,
+                                ),
                               ),
                             ),
                           ),
                         if (isAdminUser && usersState.isLoading && users.isEmpty)
-                          const Expanded(child: Center(child: CircularProgressIndicator()))
+                          const Expanded(
+                            child: Center(child: CircularProgressIndicator()),
+                          )
                         else if (isAdminUser && users.isEmpty)
                           const Expanded(child: SizedBox())
                         else if (isAdminUser)
                           Expanded(
                             child: RefreshIndicator(
                               onRefresh: () async {
-                                context.read<UsersAdminBloc>().add(const UsersAdminLoadRequested());
+                                _usersAdminBloc.add(
+                                  const UsersAdminLoadRequested(),
+                                );
                               },
                               child: ListView.separated(
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 itemCount: users.length,
-                                separatorBuilder: (_, index) =>
-                                    const SizedBox(height: 8),
+                                separatorBuilder: (_, _) => const SizedBox(height: 8),
                                 itemBuilder: (ctx, index) {
                                   final user = users[index];
                                   return Card(
@@ -366,35 +402,21 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
                                       leading: CircleAvatar(
                                         child: Text(
                                           user.name.isNotEmpty
-                                              ? user.name
-                                                  .characters
-                                                  .first
-                                                  .toUpperCase()
-                                              : user.username
-                                                  .characters
-                                                  .first
-                                                  .toUpperCase(),
+                                            ? user.name.characters.first.toUpperCase()
+                                            : user.username.characters.first.toUpperCase(),
                                         ),
                                       ),
                                       title: Text(
-                                        ('${user.name} ${user.surname}')
-                                                .trim()
-                                                .isNotEmpty
-                                            ? ('${user.name} ${user.surname}')
-                                                .trim()
+                                        ('${user.name} ${user.surname}').trim().isNotEmpty
+                                            ? ('${user.name} ${user.surname}').trim()
                                             : user.username,
                                       ),
                                       subtitle: Text('@${user.username}'),
-                                      trailing: isAdminUser
-                                          ? IconButton(
-                                              icon: const Icon(
-                                                  Icons.edit_outlined),
-                                              tooltip: 'Редактировать',
-                                              onPressed: () =>
-                                                  _editUserDialog(
-                                                      authState, user),
-                                            )
-                                          : null,
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.edit_outlined),
+                                        tooltip: 'Редактировать',
+                                        onPressed: () => _editUserDialog(authState, user),
+                                      ),
                                     ),
                                   );
                                 },
