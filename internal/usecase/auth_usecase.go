@@ -6,6 +6,7 @@ import (
 
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/service"
+	"github.com/magomedcoder/gen/pkg"
 )
 
 type AuthUseCase struct {
@@ -145,7 +146,7 @@ func (a *AuthUseCase) ChangePassword(ctx context.Context, userId int, oldPasswor
 	if oldPassword == "" {
 		return errors.New("текущий пароль не может быть пустым")
 	}
-	if err := validatePassword(newPassword); err != nil {
+	if err := pkg.ValidatePassword(newPassword); err != nil {
 		return err
 	}
 

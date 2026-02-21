@@ -5,11 +5,16 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig
-	Database  DatabaseConfig
-	JWT       JWTConfig
-	LLMRunner LLMRunnerConfig
-	Runners   RunnersConfig
+	Server      ServerConfig
+	Database    DatabaseConfig
+	JWT         JWTConfig
+	LLMRunner   LLMRunnerConfig
+	Runners     RunnersConfig
+	Attachments AttachmentsConfig
+}
+
+type AttachmentsConfig struct {
+	SaveDir string
 }
 
 type RunnersConfig struct {
@@ -58,6 +63,9 @@ func Load() (*Config, error) {
 		},
 		Runners: RunnersConfig{
 			Addresses: []string{},
+		},
+		Attachments: AttachmentsConfig{
+			SaveDir: "./uploads",
 		},
 	}
 

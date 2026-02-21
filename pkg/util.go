@@ -1,4 +1,4 @@
-package usecase
+package pkg
 
 import "errors"
 
@@ -6,7 +6,7 @@ const (
 	minPasswordLength = 8
 )
 
-func validatePassword(password string) error {
+func ValidatePassword(password string) error {
 	if password == "" {
 		return errors.New("пароль не может быть пустым")
 	}

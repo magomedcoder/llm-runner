@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
@@ -340,7 +341,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     Emitter<ChatState> emit,
   ) async {
     final text = event.text.trim();
-    if (text.isEmpty) return;
+    final hasAttachment = event.attachmentFileName != null &&
+        event.attachmentContent != null &&
+        event.attachmentContent!.isNotEmpty;
+    if (text.isEmpty && !hasAttachment) return;
 
     await _streamSubscription?.cancel();
     if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
@@ -388,6 +392,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       content: text,
       role: MessageRole.user,
       createdAt: DateTime.now(),
+      attachmentFileName: event.attachmentFileName,
+      attachmentContent: event.attachmentContent != null
+          ? Uint8List.fromList(event.attachmentContent!)
+          : null,
     );
 
     final updatedMessages = [...state.messages, userMessage];

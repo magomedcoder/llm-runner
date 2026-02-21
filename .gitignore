@@ -4,3 +4,4 @@ build
 /client-app/lib/generated/
 /llm-runner
 .DS_Store
+uploads

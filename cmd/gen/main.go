@@ -76,7 +76,7 @@ func main() {
 		llmRepo = single
 	}
 
-	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, llmRepo)
+	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, llmRepo, cfg.Attachments.SaveDir)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	authHandler := handler.NewAuthHandler(authUseCase)

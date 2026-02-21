@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:fixnum/fixnum.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/generated/grpc_pb/chat.pb.dart' as grpc;
@@ -34,6 +36,8 @@ abstract class MessageMapper {
       content: proto.content,
       role: _roleFromProto(proto.role),
       createdAt: _dateTimeFromUnixSeconds(proto.createdAt.toInt()),
+      attachmentFileName: proto.hasAttachmentName() ? proto.attachmentName : null,
+      attachmentContent: proto.attachmentContent.isNotEmpty ? Uint8List.fromList(proto.attachmentContent) : null,
     );
   }
 
@@ -43,6 +47,14 @@ abstract class MessageMapper {
     p.content = entity.content;
     p.role = _roleToProto(entity.role);
     p.createdAt = Int64(_dateTimeToUnixSeconds(entity.createdAt));
+    if (entity.attachmentFileName != null && entity.attachmentFileName!.isNotEmpty) {
+      p.attachmentName = entity.attachmentFileName!;
+    }
+
+    if (entity.attachmentContent != null && entity.attachmentContent!.isNotEmpty) {
+      p.attachmentContent = entity.attachmentContent!;
+    }
+
     return p;
   }
 
