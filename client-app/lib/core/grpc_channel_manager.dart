@@ -42,6 +42,10 @@ class GrpcChannelManager {
     return _authClient!;
   }
 
+  grpc_auth.AuthServiceClient get authClientForVersionCheck {
+    return grpc_auth.AuthServiceClient(channel);
+  }
+
   grpc_chat.ChatServiceClient get chatClient {
     _chatClient ??= grpc_chat.ChatServiceClient(
       channel,

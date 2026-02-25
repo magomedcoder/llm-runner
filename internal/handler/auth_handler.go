@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/magomedcoder/gen/api/pb"
+	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -14,10 +15,12 @@ import (
 type AuthHandler struct {
 	pb.UnimplementedAuthServiceServer
 	authUseCase *usecase.AuthUseCase
+	cfg         *config.Config
 }
 
-func NewAuthHandler(authUseCase *usecase.AuthUseCase) *AuthHandler {
+func NewAuthHandler(cfg *config.Config, authUseCase *usecase.AuthUseCase) *AuthHandler {
 	return &AuthHandler{
+		cfg:         cfg,
 		authUseCase: authUseCase,
 	}
 }
@@ -79,4 +82,19 @@ func (a *AuthHandler) ChangePassword(ctx context.Context, req *pb.ChangePassword
 	}
 	logger.I("ChangePassword: пароль изменён user=%d", user.Id)
 	return &pb.ChangePasswordResponse{Success: true}, nil
+}
+
+func (a *AuthHandler) CheckVersion(ctx context.Context, req *pb.CheckVersionRequest) (*pb.CheckVersionResponse, error) {
+	clientBuild := req.GetClientBuild()
+	compatible := clientBuild >= a.cfg.MinClientBuild
+
+	msg := ""
+	if !compatible {
+		msg = "Версия приложения несовместима с сервером"
+	}
+
+	return &pb.CheckVersionResponse{
+		Compatible: compatible,
+		Message:    msg,
+	}, nil
 }
