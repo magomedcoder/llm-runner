@@ -27,7 +27,11 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       );
       Logs().i('RunnersRemote: getRunners получено ${resp.runners.length}');
       return resp.runners
-          .map((r) => domain.RunnerInfo(address: r.address, enabled: r.enabled))
+          .map((r) => domain.RunnerInfo(
+                address: r.address,
+                enabled: r.enabled,
+                connected: r.connected,
+              ))
           .toList();
     } catch (e) {
       Logs().e('RunnersRemote: getRunners', exception: e);

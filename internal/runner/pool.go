@@ -49,6 +49,22 @@ func (p *Pool) getRepo(ctx context.Context, addr string) (domain.LLMRepository, 
 	return repo, nil
 }
 
+func (p *Pool) HasConnection(addr string) bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	_, ok := p.repos[addr]
+	return ok
+}
+
+func (p *Pool) CloseAddr(addr string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if repo, ok := p.repos[addr]; ok && repo != nil {
+		_ = repo.Close()
+		delete(p.repos, addr)
+	}
+}
+
 func (p *Pool) getOneEnabled(ctx context.Context) (domain.LLMRepository, error) {
 	addrs := p.registry.GetEnabledAddresses()
 	if len(addrs) == 0 {

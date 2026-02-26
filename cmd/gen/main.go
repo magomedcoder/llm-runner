@@ -62,6 +62,7 @@ func main() {
 	tokenRepo := postgres.NewTokenRepository(db)
 	sessionRepo := postgres.NewChatSessionRepository(db)
 	messageRepo := postgres.NewMessageRepository(db)
+	fileRepo := postgres.NewFileRepository(db)
 
 	jwtService := service.NewJWTService(cfg)
 
@@ -75,11 +76,12 @@ func main() {
 
 	var llmRepo domain.LLMRepository
 	var runnerReg *runner.Registry
+	var runnerPool *runner.Pool
 	if len(cfg.Runners.Addresses) > 0 {
 		runnerReg = runner.NewRegistry(cfg.Runners.Addresses)
-		pool := runner.NewPool(runnerReg, cfg.LLMRunner.Model)
-		defer pool.Close()
-		llmRepo = pool
+		runnerPool = runner.NewPool(runnerReg, cfg.LLMRunner.Model)
+		defer runnerPool.Close()
+		llmRepo = runnerPool
 	} else {
 		single, err := repository.NewLLMRunnerRepository(cfg.LLMRunner.Address, cfg.LLMRunner.Model)
 		if err != nil {
@@ -90,7 +92,7 @@ func main() {
 		llmRepo = single
 	}
 
-	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, llmRepo, cfg.Attachments.SaveDir)
+	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, fileRepo, llmRepo, cfg.Attachments.SaveDir)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	authHandler := handler.NewAuthHandler(cfg, authUseCase)
@@ -99,8 +101,8 @@ func main() {
 
 	grpcServer := grpc.NewServer()
 
-	if runnerReg != nil {
-		runnerHandler := handler.NewRunnerHandler(runnerReg, authUseCase)
+	if runnerReg != nil && runnerPool != nil {
+		runnerHandler := handler.NewRunnerHandler(runnerReg, runnerPool, authUseCase)
 		runnerpb.RegisterRunnerAdminServiceServer(grpcServer, runnerHandler)
 	}
 

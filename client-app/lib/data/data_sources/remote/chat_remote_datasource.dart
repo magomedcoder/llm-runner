@@ -54,9 +54,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   Future<bool> checkConnection() async {
     Logs().d('ChatRemote: checkConnection');
     try {
-      final response = await _authGuard.execute(
-        () => _client.checkConnection(grpc.Empty()),
-      );
+      final response = await _client.checkConnection(grpc.Empty());
       Logs().i('ChatRemote: checkConnection isConnected=${response.isConnected}');
       return response.isConnected;
     } on GrpcError catch (e) {
@@ -75,16 +73,15 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   Future<List<String>> getModels() async {
     Logs().d('ChatRemote: getModels');
     try {
-      final response = await _authGuard.execute(
-        () => _client.getModels(grpc.Empty()),
-      );
+      final response = await _client.getModels(grpc.Empty());
       Logs().i('ChatRemote: getModels получено ${response.models.length}');
       return response.models;
     } on GrpcError catch (e) {
       if (e.code == StatusCode.unavailable) {
         throw NetworkFailure('Ошибка подключения gRPC');
       }
-      throwGrpcError(e, 'Ошибка gRPC');
+      Logs().e('ChatRemote: getModels', exception: e);
+      throw NetworkFailure('Ошибка получения списка моделей');
     } catch (e) {
       Logs().e('ChatRemote: getModels', exception: e);
       throw ApiFailure('Ошибка получения списка моделей');

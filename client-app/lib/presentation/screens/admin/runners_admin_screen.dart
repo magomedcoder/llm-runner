@@ -4,6 +4,19 @@ import 'package:gen/core/injector.dart' as di;
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_bloc.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_event.dart';
 import 'package:gen/presentation/screens/admin/bloc/runners_admin_state.dart';
+import 'package:gen/domain/entities/runner_info.dart';
+
+String _runnerStatusText(RunnerInfo runner) {
+  if (!runner.enabled) return 'Отключён';
+  if (runner.connected) return 'Подключён';
+  return 'Ожидание подключения';
+}
+
+Color _runnerStatusColor(BuildContext context, RunnerInfo runner) {
+  if (runner.connected) return Theme.of(context).colorScheme.primary;
+  if (runner.enabled) return Theme.of(context).colorScheme.tertiary;
+  return Theme.of(context).colorScheme.outline;
+}
 
 class RunnersAdminScreen extends StatefulWidget {
   const RunnersAdminScreen({super.key});
@@ -68,12 +81,25 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
               itemCount: state.runners.length,
               itemBuilder: (context, index) {
                 final r = state.runners[index];
+                final isConnected = r.enabled && r.connected;
                 return Card(
                   margin: const EdgeInsets.only(bottom: 8),
                   child: ListTile(
+                    leading: Icon(
+                      r.enabled ? Icons.link : Icons.link_off,
+                      color: isConnected
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outline,
+                    ),
                     title: Text(
                       r.address,
                       style: const TextStyle(fontFamily: 'monospace'),
+                    ),
+                    subtitle: Text(
+                      _runnerStatusText(r),
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: _runnerStatusColor(context, r),
+                          ),
                     ),
                     trailing: Switch(
                       value: r.enabled,

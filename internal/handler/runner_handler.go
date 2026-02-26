@@ -13,12 +13,14 @@ type RunnerHandler struct {
 	runnerpb.UnimplementedRunnerServiceServer
 	runnerpb.UnimplementedRunnerAdminServiceServer
 	registry    *runner.Registry
+	pool        *runner.Pool
 	authUseCase *usecase.AuthUseCase
 }
 
-func NewRunnerHandler(registry *runner.Registry, authUseCase *usecase.AuthUseCase) *RunnerHandler {
+func NewRunnerHandler(registry *runner.Registry, pool *runner.Pool, authUseCase *usecase.AuthUseCase) *RunnerHandler {
 	return &RunnerHandler{
 		registry:    registry,
+		pool:        pool,
 		authUseCase: authUseCase,
 	}
 }
@@ -30,6 +32,9 @@ func (h *RunnerHandler) GetRunners(ctx context.Context, _ *runnerpb.Empty) (*run
 	}
 
 	runners := h.registry.GetRunners()
+	for _, r := range runners {
+		r.Connected = r.Enabled && h.pool.HasConnection(r.Address)
+	}
 	logger.V("GetRunners: возвращено раннеров: %d", len(runners))
 	return &runnerpb.GetRunnersResponse{
 		Runners: runners,
@@ -42,6 +47,9 @@ func (h *RunnerHandler) SetRunnerEnabled(ctx context.Context, req *runnerpb.SetR
 	}
 	if req != nil {
 		h.registry.SetEnabled(req.Address, req.Enabled)
+		if !req.Enabled {
+			h.pool.CloseAddr(req.Address)
+		}
 		logger.I("SetRunnerEnabled: адрес=%s enabled=%v", req.Address, req.Enabled)
 	}
 
