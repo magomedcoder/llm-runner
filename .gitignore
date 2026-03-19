@@ -1,4 +1,4 @@
-/llama/llama.cpp/
+.idea
 /llama/llama_lib
 /llama/build/
 /llama/llama.o
