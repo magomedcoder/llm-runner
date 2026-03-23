@@ -37,7 +37,6 @@ CXXV := $(shell $(CXX) --version | head -n 1)
 
 BUILD_TYPE?=
 
-# Должно совпадать с каталогом из deps-llama.cpp (git clone … llama.cpp_lib)
 LLAMA_LIB = llama.cpp_lib
 CFLAGS   = -I./$(LLAMA_LIB) -I./$(LLAMA_LIB)/include -I./$(LLAMA_LIB)/ggml/include -I. -O3 -DNDEBUG -std=c11 -fPIC
 CXXFLAGS = -I./$(LLAMA_LIB) -I./$(LLAMA_LIB)/include -I./$(LLAMA_LIB)/ggml/include -I. -I./$(LLAMA_LIB)/common -I./common -O3 -DNDEBUG -std=c++17 -fPIC

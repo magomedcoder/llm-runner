@@ -21,3 +21,18 @@ make run
 # Сборка бинарника (CUDA)
 make build-nvidia
 ```
+
+### Скачивание моделей с Hugging Face
+
+```bash
+make build-download-model
+
+# Список доступных .gguf в репозитории
+./build/download-model -repo ... -list
+
+# Скачать один файл
+./build/download-model -repo ... -file ...gguf
+
+# Скачать все .gguf из репозитория
+./build/download-model -repo ...
+```
