@@ -27,12 +27,12 @@ class ChatMessageList extends StatelessWidget {
       itemBuilder: (context, index) {
         if (index < state.messages.length) {
           return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
+            padding: const EdgeInsets.only(bottom: 8),
             child: ChatBubble(message: state.messages[index]),
           );
         }
         return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.only(bottom: 8),
           child: ChatBubble(
             message: Message(
               id: -1,

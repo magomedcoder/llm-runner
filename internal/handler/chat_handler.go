@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
@@ -48,6 +49,12 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	}
 
 	lastMessage := req.Messages[len(req.Messages)-1]
+	lastRole := strings.ToLower(strings.TrimSpace(lastMessage.GetRole()))
+	if lastRole == "assistant" {
+		logger.W("SendMessage: последнее сообщение с role=assistant")
+		return status.Error(codes.InvalidArgument, "последнее сообщение в запросе должно быть от пользователя (role=user)")
+	}
+
 	userMessage := lastMessage.Content
 	attachmentName := ""
 	if lastMessage.AttachmentName != nil {

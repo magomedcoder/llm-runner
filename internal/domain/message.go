@@ -1,5 +1,7 @@
 package domain
 
+import "strings"
+
 type MessageRole string
 
 const (
@@ -16,7 +18,7 @@ func (m *Message) ToMap() map[string]interface{} {
 }
 
 func FromProtoRole(role string) MessageRole {
-	switch role {
+	switch strings.ToLower(strings.TrimSpace(role)) {
 	case "system":
 		return MessageRoleSystem
 	case "user":

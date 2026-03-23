@@ -100,6 +100,28 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
                 },
               ),
               const SizedBox(height: 12),
+              TextFormField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Имя',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Введите имя';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: surnameController,
+                decoration: const InputDecoration(
+                  labelText: 'Фамилия',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
               StatefulBuilder(
                 builder: (context, setInnerState) {
                   return DropdownButtonFormField<int>(
@@ -126,28 +148,6 @@ class _UsersAdminScreenState extends State<UsersAdminScreen> {
                     },
                   );
                 },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Имя',
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Введите имя';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: surnameController,
-                decoration: const InputDecoration(
-                  labelText: 'Фамилия',
-                  border: OutlineInputBorder(),
-                ),
               ),
             ],
           ),

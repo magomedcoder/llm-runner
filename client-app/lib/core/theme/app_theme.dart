@@ -108,6 +108,44 @@ class AppTheme {
           focusColor: _buttonGlassHover,
         ),
       ),
+      navigationRailTheme: NavigationRailThemeData(
+        backgroundColor: scheme.surfaceContainerLow,
+        indicatorColor: _buttonGlass,
+        selectedIconTheme: IconThemeData(color: scheme.onSurface),
+        selectedLabelTextStyle: TextStyle(
+          color: scheme.onSurface,
+          fontSize: 12,
+          fontWeight: FontWeight.w500,
+          fontFamily: 'Inter',
+        ),
+        unselectedIconTheme: IconThemeData(color: scheme.onSurfaceVariant),
+        unselectedLabelTextStyle: TextStyle(
+          color: scheme.onSurfaceVariant,
+          fontSize: 12,
+          fontFamily: 'Inter',
+        ),
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: scheme.surfaceContainerLow,
+        indicatorColor: _buttonGlass,
+        surfaceTintColor: Colors.transparent,
+        elevation: 0,
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return TextStyle(
+            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+            fontSize: 12,
+            fontWeight: selected ? FontWeight.w500 : FontWeight.normal,
+            fontFamily: 'Inter',
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          final selected = states.contains(WidgetState.selected);
+          return IconThemeData(
+            color: selected ? scheme.onSurface : scheme.onSurfaceVariant,
+          );
+        }),
+      ),
     );
   }
 }

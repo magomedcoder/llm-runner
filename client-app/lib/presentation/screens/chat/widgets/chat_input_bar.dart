@@ -426,6 +426,14 @@ class ChatInputBarState extends State<ChatInputBar> {
                     Expanded(
                       child: CallbackShortcuts(
                         bindings: {
+                          const SingleActivator(
+                            LogicalKeyboardKey.enter,
+                            shift: true,
+                          ): _insertNewlineAtCursor,
+                          const SingleActivator(
+                            LogicalKeyboardKey.numpadEnter,
+                            shift: true,
+                          ): _insertNewlineAtCursor,
                           if (isDesktop) ...{
                             const SingleActivator(
                               LogicalKeyboardKey.enter,
@@ -435,6 +443,26 @@ class ChatInputBarState extends State<ChatInputBar> {
                               LogicalKeyboardKey.enter,
                               meta: true,
                             ): _insertNewlineAtCursor,
+                            const SingleActivator(
+                              LogicalKeyboardKey.numpadEnter,
+                              control: true,
+                            ): _insertNewlineAtCursor,
+                            const SingleActivator(
+                              LogicalKeyboardKey.numpadEnter,
+                              meta: true,
+                            ): _insertNewlineAtCursor,
+                          },
+                          const SingleActivator(LogicalKeyboardKey.enter): () {
+                            if (widget.isEnabled) {
+                              _sendMessage();
+                            }
+                          },
+                          const SingleActivator(
+                            LogicalKeyboardKey.numpadEnter,
+                          ): () {
+                            if (widget.isEnabled) {
+                              _sendMessage();
+                            }
                           },
                         },
                         child: TextField(

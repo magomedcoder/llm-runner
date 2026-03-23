@@ -62,11 +62,12 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 		return nil, 0, err
 	}
 
-	messages, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 100)
+	rawMessages, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 100)
 	if err != nil {
 		logger.E("SendMessage: получение сообщений: %v", err)
 		return nil, 0, err
 	}
+	messages := filterHistoryForLLM(rawMessages)
 
 	var attachmentFileID *int64
 	if len(attachmentContent) > 0 && attachmentName != "" && c.attachmentsSaveDir != "" {
@@ -192,6 +193,25 @@ func (c *ChatUseCase) UpdateSessionModel(ctx context.Context, userId int, sessio
 	}
 
 	return session, nil
+}
+
+func filterHistoryForLLM(messages []*domain.Message) []*domain.Message {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	out := make([]*domain.Message, 0, len(messages))
+	for _, m := range messages {
+		if m == nil {
+			continue
+		}
+		if m.Role == domain.MessageRoleAssistant && strings.TrimSpace(m.Content) == "" {
+			continue
+		}
+		out = append(out, m)
+	}
+
+	return out
 }
 
 func buildMessageWithFile(attachmentName string, attachmentContent []byte, userMessage string) string {

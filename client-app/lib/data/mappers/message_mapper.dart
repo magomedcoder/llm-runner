@@ -16,7 +16,7 @@ abstract class MessageMapper {
   }
 
   static MessageRole _roleFromProto(String role) {
-    switch (role) {
+    switch (role.trim().toLowerCase()) {
       case 'user':
         return MessageRole.user;
       case 'assistant':

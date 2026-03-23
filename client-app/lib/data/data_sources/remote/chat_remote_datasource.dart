@@ -14,6 +14,15 @@ import 'package:gen/domain/entities/session.dart';
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
 import 'package:gen/generated/grpc_pb/chat.pbgrpc.dart' as grpc;
 
+Message? _lastUserMessage(List<Message> messages) {
+  for (var i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role == MessageRole.user) {
+      return messages[i];
+    }
+  }
+  return null;
+}
+
 abstract class IChatRemoteDataSource {
   Future<bool> checkConnection();
 
@@ -98,7 +107,13 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   }) async* {
     Logs().d('ChatRemote: sendMessage sessionId=$sessionId');
     try {
-      final chatMessages = MessageMapper.listToProto(messages);
+      final lastUser = _lastUserMessage(messages);
+      if (lastUser == null) {
+        Logs().w('ChatRemote: sendMessage нет сообщения с role=user');
+        throw ApiFailure('Нет пользовательского сообщения для отправки');
+      }
+
+      final chatMessages = MessageMapper.listToProto([lastUser]);
 
       final request = grpc.SendMessageRequest()
         ..sessionId = Int64(sessionId)
@@ -125,6 +140,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       }
       Logs().e('ChatRemote: sendMessage', exception: e);
       throwGrpcError(e, 'Ошибка gRPC');
+    } on Failure {
+      rethrow;
     } catch (e) {
       Logs().e('ChatRemote: sendMessage', exception: e);
       throw ApiFailure('Ошибка отправки сообщения');
