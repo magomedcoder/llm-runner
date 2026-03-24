@@ -77,17 +77,21 @@ class ChatStopGeneration extends ChatEvent {
   const ChatStopGeneration();
 }
 
-class ChatLoadModels extends ChatEvent {
-  const ChatLoadModels();
+class ChatRetryLastMessage extends ChatEvent {
+  const ChatRetryLastMessage();
 }
 
-class ChatSelectModel extends ChatEvent {
-  final String model;
+class ChatLoadRunners extends ChatEvent {
+  const ChatLoadRunners();
+}
 
-  const ChatSelectModel(this.model);
+class ChatSelectRunner extends ChatEvent {
+  final String runner;
+
+  const ChatSelectRunner(this.runner);
 
   @override
-  List<Object?> get props => [model];
+  List<Object?> get props => [runner];
 }
 
 class ChatDeleteSession extends ChatEvent {
@@ -107,4 +111,56 @@ class ChatUpdateSessionTitle extends ChatEvent {
 
   @override
   List<Object?> get props => [sessionId, title];
+}
+
+class ChatLoadSessionSettings extends ChatEvent {
+  final int sessionId;
+
+  const ChatLoadSessionSettings(this.sessionId);
+
+  @override
+  List<Object?> get props => [sessionId];
+}
+
+class ChatUpdateSessionSettings extends ChatEvent {
+  final String systemPrompt;
+  final List<String> stopSequences;
+  final int timeoutSeconds;
+  final double? temperature;
+  final int? maxTokens;
+  final int? topK;
+  final double? topP;
+  final bool jsonMode;
+  final String jsonSchema;
+  final String toolsJson;
+  final String profile;
+
+  const ChatUpdateSessionSettings({
+    required this.systemPrompt,
+    required this.stopSequences,
+    required this.timeoutSeconds,
+    this.temperature,
+    this.maxTokens,
+    this.topK,
+    this.topP,
+    required this.jsonMode,
+    required this.jsonSchema,
+    required this.toolsJson,
+    required this.profile,
+  });
+
+  @override
+  List<Object?> get props => [
+    systemPrompt,
+    stopSequences,
+    timeoutSeconds,
+    temperature,
+    maxTokens,
+    topK,
+    topP,
+    jsonMode,
+    jsonSchema,
+    toolsJson,
+    profile,
+  ];
 }

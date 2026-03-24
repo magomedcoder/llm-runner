@@ -24,16 +24,29 @@ class RunnerCardHeader extends StatelessWidget {
         _StatusIndicator(color: statusColor),
         const SizedBox(width: 10),
         Expanded(
-          child: Text(
-            runner.address,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.w500,
-              color: runner.enabled
-                  ? theme.colorScheme.onSurface
-                  : theme.colorScheme.onSurfaceVariant,
-            ),
-            overflow: TextOverflow.ellipsis,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                runner.name.isNotEmpty ? runner.name : runner.address,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: runner.enabled
+                      ? theme.colorScheme.onSurface
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (runner.name.isNotEmpty)
+                Text(
+                  runner.address,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    fontFamily: 'monospace',
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
           ),
         ),
         Text(

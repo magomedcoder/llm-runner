@@ -99,7 +99,7 @@ void showSupportedFormatsDialog(BuildContext context) {
               ),
               const SizedBox(height: 16),
               Text(
-                'Макс. размер: ${AttachmentSettings.maxFileSizeKb} КБ',
+                'Рекомендуемый максимум: ${AttachmentSettings.maxFileSizeLabel}',
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),

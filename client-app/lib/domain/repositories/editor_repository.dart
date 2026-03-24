@@ -9,4 +9,9 @@ abstract interface class EditorRepository {
   });
 
   Future<void> cancelTransform();
+
+  Future<void> saveHistory({
+    required String text,
+    String? runner,
+  });
 }

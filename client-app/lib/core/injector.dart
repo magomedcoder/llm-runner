@@ -2,7 +2,6 @@ import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/auth_interceptor.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/server_config.dart';
-import 'package:gen/data/data_sources/local/session_model_local_data_source.dart';
 import 'package:gen/data/data_sources/local/user_local_data_source.dart';
 import 'package:gen/data/data_sources/remote/auth_remote_datasource.dart';
 import 'package:gen/data/data_sources/remote/chat_remote_datasource.dart';
@@ -26,13 +25,16 @@ import 'package:gen/domain/usecases/auth/refresh_token_usecase.dart';
 import 'package:gen/domain/usecases/chat/connect_usecase.dart';
 import 'package:gen/domain/usecases/chat/create_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/delete_session_usecase.dart';
-import 'package:gen/domain/usecases/chat/get_models_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_default_runner_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_messages_usecase.dart';
-import 'package:gen/domain/usecases/chat/get_session_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
-import 'package:gen/domain/usecases/chat/set_session_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/set_default_runner_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/update_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_title_usecase.dart';
 import 'package:gen/domain/usecases/editor/transform_text_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_status_usecase.dart';
@@ -102,11 +104,8 @@ Future<void> init() async {
     () => RunnersRemoteDataSource(sl<GrpcChannelManager>(), sl<AuthGuard>()),
   );
 
-  sl.registerLazySingleton<SessionModelLocalDataSource>(
-    () => SessionModelLocalDataSourceImpl(),
-  );
   sl.registerLazySingleton<ChatRepository>(
-    () => ChatRepositoryImpl(sl(), sl<SessionModelLocalDataSource>()),
+    () => ChatRepositoryImpl(sl()),
   );
   sl.registerLazySingleton<EditorRepository>(
     () => EditorRepositoryImpl(sl<IEditorRemoteDataSource>()),
@@ -118,14 +117,17 @@ Future<void> init() async {
   );
 
   sl.registerFactory(() => ConnectUseCase(sl()));
-  sl.registerFactory(() => GetModelsUseCase(sl()));
   sl.registerFactory(() => SendMessageUseCase(sl()));
   sl.registerFactory(() => CreateSessionUseCase(sl()));
   sl.registerFactory(() => GetSessionsUseCase(sl()));
   sl.registerFactory(() => GetSessionMessagesUseCase(sl()));
-  sl.registerFactory(() => GetSessionModelUseCase(sl()));
-  sl.registerFactory(() => SetSessionModelUseCase(sl()));
+  sl.registerFactory(() => GetSessionSettingsUseCase(sl()));
   sl.registerFactory(() => UpdateSessionModelUseCase(sl()));
+  sl.registerFactory(() => UpdateSessionSettingsUseCase(sl()));
+  sl.registerFactory(() => GetSelectedRunnerUseCase(sl()));
+  sl.registerFactory(() => SetSelectedRunnerUseCase(sl()));
+  sl.registerFactory(() => GetDefaultRunnerModelUseCase(sl()));
+  sl.registerFactory(() => SetDefaultRunnerModelUseCase(sl()));
   sl.registerFactory(() => DeleteSessionUseCase(sl()));
   sl.registerFactory(() => UpdateSessionTitleUseCase(sl()));
   sl.registerFactory(() => TransformTextUseCase(sl()));
@@ -157,10 +159,10 @@ Future<void> init() async {
     () => ChatBloc(
       authBloc: sl<AuthBloc>(),
       connectUseCase: sl(),
-      getModelsUseCase: sl(),
-      getSessionModelUseCase: sl(),
-      setSessionModelUseCase: sl(),
+      getRunnersUseCase: sl(),
       updateSessionModelUseCase: sl(),
+      getSessionSettingsUseCase: sl(),
+      updateSessionSettingsUseCase: sl(),
       sendMessageUseCase: sl(),
       createSessionUseCase: sl(),
       getSessionsUseCase: sl(),
@@ -168,13 +170,15 @@ Future<void> init() async {
       deleteSessionUseCase: sl(),
       updateSessionTitleUseCase: sl(),
       getRunnersStatusUseCase: sl(),
+      getSelectedRunnerUseCase: sl(),
+      setSelectedRunnerUseCase: sl(),
     ),
   );
 
   sl.registerFactory(
     () => EditorBloc(
       authBloc: sl<AuthBloc>(),
-      getModelsUseCase: sl(),
+      getSelectedRunnerUseCase: sl(),
       transformTextUseCase: sl(),
       editorRepository: sl<EditorRepository>(),
     ),
@@ -193,6 +197,10 @@ Future<void> init() async {
     () => RunnersAdminBloc(
       getRunnersUseCase: sl(),
       setRunnerEnabledUseCase: sl(),
+      getSelectedRunnerUseCase: sl(),
+      setSelectedRunnerUseCase: sl(),
+      getDefaultRunnerModelUseCase: sl(),
+      setDefaultRunnerModelUseCase: sl(),
     ),
   );
 }

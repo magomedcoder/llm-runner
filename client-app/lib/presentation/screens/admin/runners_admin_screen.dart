@@ -24,6 +24,62 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
     _bloc = di.sl<RunnersAdminBloc>()..add(const RunnersAdminLoadRequested());
   }
 
+  Widget _buildDefaultRunnerSection(
+    BuildContext context,
+    RunnersAdminState runnersState,
+    bool isAdminUser,
+  ) {
+    final theme = Theme.of(context);
+    final enabledRunners = runnersState.runners
+        .where((runner) => runner.enabled && runner.address.isNotEmpty)
+        .map((runner) => runner.address)
+        .toSet()
+        .toList()
+      ..sort();
+
+    final selectedDefault = runnersState.defaultRunner != null && enabledRunners.contains(runnersState.defaultRunner)
+        ? runnersState.defaultRunner
+        : null;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Раннер по умолчанию', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String?>(
+              initialValue: selectedDefault,
+              isExpanded: true,
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                labelText: 'Раннер',
+                isDense: true,
+              ),
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Не выбран'),
+                ),
+                for (final address in enabledRunners)
+                  DropdownMenuItem<String?>(
+                    value: address,
+                    child: Text(address),
+                  ),
+              ],
+              onChanged: isAdminUser
+                ? (value) {
+                  _bloc.add(RunnersAdminDefaultRunnerChanged(value));
+                }
+              : null,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _bloc.close();
@@ -88,11 +144,18 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
                               child: Text('Нет зарегистрированных раннеров'),
                             )
                           : ListView.separated(
-                              itemCount: runnersState.runners.length,
+                              itemCount: runnersState.runners.length + 1,
                               separatorBuilder: (_, _) =>
                                   const SizedBox(height: 8),
                               itemBuilder: (ctx, index) {
-                                final runner = runnersState.runners[index];
+                                if (index == 0) {
+                                  return _buildDefaultRunnerSection(
+                                    context,
+                                    runnersState,
+                                    isAdminUser,
+                                  );
+                                }
+                                final runner = runnersState.runners[index - 1];
                                 return RunnerCard(
                                   runner: runner,
                                   onToggleEnabled: () {
@@ -107,6 +170,18 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
                                       ),
                                     );
                                   },
+                                  defaultModel: runnersState
+                                      .defaultModelsByRunner[runner.address],
+                                  onDefaultModelChanged: isAdminUser
+                                      ? (value) {
+                                          _bloc.add(
+                                            RunnersAdminDefaultModelChanged(
+                                              runnerAddress: runner.address,
+                                              model: value,
+                                            ),
+                                          );
+                                        }
+                                      : null,
                                 );
                               },
                             ),

@@ -15,6 +15,10 @@ abstract class IEditorRemoteDataSource {
   });
 
   Future<void> cancelTransform();
+  Future<void> saveHistory({
+    required String text,
+    String? runner,
+  });
 }
 
 class EditorRemoteDataSource implements IEditorRemoteDataSource {
@@ -82,5 +86,22 @@ class EditorRemoteDataSource implements IEditorRemoteDataSource {
       Logs().e('EditorRemoteDataSource: ошибка transform', exception: e);
       throw ApiFailure('Ошибка обработки текста');
     }
+  }
+
+  @override
+  Future<void> saveHistory({
+    required String text,
+    String? runner,
+  }) async {
+    try {
+      await _authGuard.execute(
+        () => _client.saveHistory(
+          grpc.SaveHistoryRequest(
+            text: text,
+            runner: runner ?? '',
+          ),
+        ),
+      );
+    } catch (_) {}
   }
 }

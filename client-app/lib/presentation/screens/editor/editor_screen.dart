@@ -29,10 +29,14 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   void _onLocalTextChanged() {
-    if (_applyingFromBloc) return;
+    if (_applyingFromBloc) {
+      return;
+    }
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 350), () {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       context.read<EditorBloc>().add(EditorDocumentChanged(_controller.text));
     });
   }
@@ -51,21 +55,42 @@ class _EditorScreenState extends State<EditorScreen> {
   }
 
   String _labelForType(grpc.TransformType t) {
-    if (t == grpc.TransformType.TRANSFORM_TYPE_FIX) return 'Исправить';
-    if (t == grpc.TransformType.TRANSFORM_TYPE_IMPROVE) return 'Улучшить';
-    if (t == grpc.TransformType.TRANSFORM_TYPE_BEAUTIFY) return 'Красиво';
+    if (t == grpc.TransformType.TRANSFORM_TYPE_FIX) {
+      return 'Исправить';
+    }
+
+    if (t == grpc.TransformType.TRANSFORM_TYPE_IMPROVE) {
+      return 'Улучшить';
+    }
+
+    if (t == grpc.TransformType.TRANSFORM_TYPE_BEAUTIFY) {
+      return 'Красиво';
+    }
+
     if (t == grpc.TransformType.TRANSFORM_TYPE_PARAPHRASE) {
       return 'Другими словами';
     }
-    if (t == grpc.TransformType.TRANSFORM_TYPE_SHORTEN) return 'Кратко';
-    if (t == grpc.TransformType.TRANSFORM_TYPE_SIMPLIFY) return 'Проще';
-    if (t == grpc.TransformType.TRANSFORM_TYPE_MAKE_COMPLEX) return 'Сложнее';
+
+    if (t == grpc.TransformType.TRANSFORM_TYPE_SHORTEN) {
+      return 'Кратко';
+    }
+
+    if (t == grpc.TransformType.TRANSFORM_TYPE_SIMPLIFY) {
+      return 'Проще';
+    }
+
+    if (t == grpc.TransformType.TRANSFORM_TYPE_MAKE_COMPLEX) {
+      return 'Сложнее';
+    }
+
     if (t == grpc.TransformType.TRANSFORM_TYPE_MORE_FORMAL) {
       return 'Более формально';
     }
+
     if (t == grpc.TransformType.TRANSFORM_TYPE_MORE_CASUAL) {
       return 'Разговорный стиль';
     }
+
     return 'Выберите режим';
   }
 
@@ -87,8 +112,7 @@ class _EditorScreenState extends State<EditorScreen> {
     final colorScheme = theme.colorScheme;
 
     return BlocConsumer<EditorBloc, EditorState>(
-      listenWhen: (p, c) =>
-          p.documentVersion != c.documentVersion || p.error != c.error,
+      listenWhen: (p, c) => p.documentVersion != c.documentVersion || p.error != c.error,
       listener: (context, state) {
         if (state.documentVersion != _lastDocVersion) {
           _lastDocVersion = state.documentVersion;
@@ -150,8 +174,8 @@ class _EditorScreenState extends State<EditorScreen> {
   }) {
     return BoxDecoration(
       color: embedded
-          ? colorScheme.surface.withValues(alpha: 0.5)
-          : colorScheme.surfaceContainerHighest,
+        ? colorScheme.surface.withValues(alpha: 0.5)
+        : colorScheme.surfaceContainerHighest,
       borderRadius: BorderRadius.circular(10),
       border: Border.all(
         color: colorScheme.outline.withValues(alpha: embedded ? 0.12 : 0.22),
@@ -303,14 +327,6 @@ class _EditorScreenState extends State<EditorScreen> {
                             embedded: true,
                           ),
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildModelSelector(
-                            context,
-                            state,
-                            embedded: true,
-                          ),
-                        ),
                       ],
                     ),
                     const SizedBox(height: 10),
@@ -359,15 +375,6 @@ class _EditorScreenState extends State<EditorScreen> {
                             embedded: true,
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: 220,
-                          child: _buildModelSelector(
-                            context,
-                            state,
-                            embedded: true,
-                          ),
-                        ),
                         const Spacer(),
                         _buildMarkdownToggle(context, state, embedded: true),
                         const SizedBox(width: 10),
@@ -411,11 +418,11 @@ class _EditorScreenState extends State<EditorScreen> {
           style: btnStyle,
           tooltip: 'Назад в истории',
           onPressed: state.isLoading || !state.canUndo
-              ? null
-              : () {
-                  _flushDocumentToBloc();
-                  context.read<EditorBloc>().add(const EditorUndo());
-                },
+            ? null
+            : () {
+              _flushDocumentToBloc();
+              context.read<EditorBloc>().add(const EditorUndo());
+            },
           icon: const Icon(Icons.undo_rounded, size: 20),
         ),
         const SizedBox(width: 6),
@@ -423,11 +430,11 @@ class _EditorScreenState extends State<EditorScreen> {
           style: btnStyle,
           tooltip: 'Вперёд в истории',
           onPressed: state.isLoading || !state.canRedo
-              ? null
-              : () {
-                  _flushDocumentToBloc();
-                  context.read<EditorBloc>().add(const EditorRedo());
-                },
+            ? null
+            : () {
+              _flushDocumentToBloc();
+              context.read<EditorBloc>().add(const EditorRedo());
+            },
           icon: const Icon(Icons.redo_rounded, size: 20),
         ),
       ],
@@ -474,7 +481,10 @@ class _EditorScreenState extends State<EditorScreen> {
                   tooltip: 'Скопировать',
                   onPressed: () {
                     final text = _controller.text;
-                    if (text.isEmpty) return;
+                    if (text.isEmpty) {
+                      return;
+                    }
+
                     Clipboard.setData(ClipboardData(text: text));
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -521,8 +531,8 @@ class _EditorScreenState extends State<EditorScreen> {
                   ),
                   decoration: InputDecoration(
                     hintText: state.isLoading
-                        ? 'Обработка…'
-                        : 'Введите или отредактируйте текст. Результат появится здесь же после Применить',
+                      ? 'Обработка…'
+                      : 'Напишите текст или вставите из буфера',
                     hintStyle: TextStyle(
                       color: colorScheme.onSurface.withValues(alpha: 0.45),
                     ),
@@ -555,8 +565,7 @@ class _EditorScreenState extends State<EditorScreen> {
         isDense: true,
         decoration: const InputDecoration(
           border: InputBorder.none,
-          contentPadding:
-              EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           isDense: true,
         ),
         selectedItemBuilder: (context) {
@@ -574,109 +583,28 @@ class _EditorScreenState extends State<EditorScreen> {
           }).toList();
         },
         items: _types
-            .map(
-              (type) => DropdownMenuItem(
-                value: type,
-                child: Text(
-                  _labelForType(type),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
+          .map(
+            (type) => DropdownMenuItem(
+              value: type,
+              child: Text(
+                _labelForType(type),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodyMedium,
               ),
-            )
-            .toList(),
+            ),
+          )
+          .toList(),
         onChanged: state.isLoading
-            ? null
-            : (v) {
-                if (v != null) {
-                  context.read<EditorBloc>().add(EditorTypeChanged(v));
-                }
-              },
+          ? null
+          : (v) {
+            if (v != null) {
+              context.read<EditorBloc>().add(EditorTypeChanged(v));
+            }
+          },
         dropdownColor: colorScheme.surface,
         borderRadius: BorderRadius.circular(8),
         iconSize: 20,
-      ),
-    );
-  }
-
-  Widget _buildModelSelector(
-    BuildContext context,
-    EditorState state, {
-    bool embedded = false,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
-    if (state.models.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        alignment: Alignment.centerLeft,
-        decoration: _editorControlDecoration(colorScheme, embedded: embedded),
-        child: Text(
-          'Нет моделей',
-          style: theme.textTheme.bodyMedium?.copyWith(
-            color: colorScheme.onSurface.withValues(alpha: 0.6),
-          ),
-        ),
-      );
-    }
-
-    final modelValue =
-        (state.selectedModel != null &&
-                state.models.contains(state.selectedModel))
-            ? state.selectedModel
-            : state.models.first;
-
-    return Tooltip(
-      message: modelValue,
-      waitDuration: const Duration(milliseconds: 500),
-      child: Container(
-        decoration: _editorControlDecoration(colorScheme, embedded: embedded),
-        child: DropdownButtonFormField<String>(
-          key: ValueKey(modelValue),
-          initialValue: modelValue,
-          isExpanded: true,
-          isDense: true,
-          decoration: const InputDecoration(
-            border: InputBorder.none,
-            contentPadding:
-                EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            isDense: true,
-          ),
-          selectedItemBuilder: (context) {
-            return state.models.map((m) {
-              return Align(
-                alignment: AlignmentDirectional.centerStart,
-                child: Text(
-                  m,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: theme.textTheme.bodyMedium,
-                ),
-              );
-            }).toList();
-          },
-          items: state.models
-              .map(
-                (m) => DropdownMenuItem<String>(
-                  value: m,
-                  child: Text(
-                    m,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium,
-                  ),
-                ),
-              )
-              .toList(),
-          onChanged: state.isLoading || state.models.isEmpty
-              ? null
-              : (v) => context.read<EditorBloc>().add(EditorModelChanged(v)),
-          dropdownColor: colorScheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          iconSize: 20,
-        ),
       ),
     );
   }
@@ -689,11 +617,10 @@ class _EditorScreenState extends State<EditorScreen> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return ChoiceChip(
-      visualDensity:
-          embedded ? VisualDensity.compact : VisualDensity.standard,
+      visualDensity: embedded ? VisualDensity.compact : VisualDensity.standard,
       materialTapTargetSize: embedded
-          ? MaterialTapTargetSize.shrinkWrap
-          : MaterialTapTargetSize.padded,
+        ? MaterialTapTargetSize.shrinkWrap
+        : MaterialTapTargetSize.padded,
       label: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -701,8 +628,8 @@ class _EditorScreenState extends State<EditorScreen> {
             Icons.code,
             size: embedded ? 15 : 16,
             color: state.preserveMarkdown
-                ? colorScheme.onPrimaryContainer
-                : colorScheme.onSurface.withValues(alpha: 0.7),
+              ? colorScheme.onPrimaryContainer
+              : colorScheme.onSurface.withValues(alpha: 0.7),
           ),
           SizedBox(width: embedded ? 5 : 6),
           const Text('Markdown'),
@@ -710,28 +637,23 @@ class _EditorScreenState extends State<EditorScreen> {
       ),
       selected: state.preserveMarkdown,
       onSelected: state.isLoading
-          ? null
-          : (selected) {
-              context.read<EditorBloc>().add(
-                    EditorPreserveMarkdownChanged(selected),
-                  );
-            },
+        ? null
+        : (selected) {
+          context.read<EditorBloc>().add(EditorPreserveMarkdownChanged(selected));
+        },
       selectedColor: colorScheme.primaryContainer,
       backgroundColor: embedded
-          ? colorScheme.surface.withValues(alpha: 0.45)
-          : null,
+        ? colorScheme.surface.withValues(alpha: 0.45)
+        : null,
       side: embedded
-          ? BorderSide(
-              color: colorScheme.outline.withValues(alpha: 0.14),
-            )
-          : null,
+        ? BorderSide(color: colorScheme.outline.withValues(alpha: 0.14))
+        : null,
       labelStyle: TextStyle(
         fontSize: embedded ? 13 : null,
         color: state.preserveMarkdown
-            ? colorScheme.onPrimaryContainer
-            : colorScheme.onSurface.withValues(alpha: 0.7),
-        fontWeight:
-            state.preserveMarkdown ? FontWeight.w600 : FontWeight.normal,
+          ? colorScheme.onPrimaryContainer
+          : colorScheme.onSurface.withValues(alpha: 0.7),
+        fontWeight: state.preserveMarkdown ? FontWeight.w600 : FontWeight.normal,
       ),
     );
   }

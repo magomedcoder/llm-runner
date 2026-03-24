@@ -6,7 +6,6 @@ import 'package:gen/presentation/screens/chat/widgets/chat_empty_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_message_list.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_runners_inactive_banner.dart';
-import 'package:gen/presentation/screens/chat/widgets/chat_toolbar.dart';
 
 class ChatMessagesPanel extends StatelessWidget {
   const ChatMessagesPanel({
@@ -47,14 +46,13 @@ class ChatMessagesPanel extends StatelessWidget {
             children: [
               if (state.hasActiveRunners == false)
                 const ChatRunnersInactiveBanner(),
-              ChatToolbar(state: state),
               Expanded(
                 child: state.messages.isEmpty
-                    ? const ChatEmptyState()
-                    : ChatMessageList(
-                        scrollController: scrollController,
-                        state: state,
-                      ),
+                  ? const ChatEmptyState()
+                  : ChatMessageList(
+                    scrollController: scrollController,
+                    state: state,
+                  ),
               ),
               const Divider(height: 1),
               ChatInputBar(key: inputBarKey, isEnabled: canDropFile),

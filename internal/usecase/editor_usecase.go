@@ -11,12 +11,14 @@ import (
 )
 
 type EditorUseCase struct {
-	llmRepo domain.LLMRepository
+	llmRepo     domain.LLMRepository
+	historyRepo domain.EditorHistoryRepository
 }
 
-func NewEditorUseCase(llmRepo domain.LLMRepository) *EditorUseCase {
+func NewEditorUseCase(llmRepo domain.LLMRepository, historyRepo domain.EditorHistoryRepository) *EditorUseCase {
 	return &EditorUseCase{
-		llmRepo: llmRepo,
+		llmRepo:     llmRepo,
+		historyRepo: historyRepo,
 	}
 }
 
@@ -39,7 +41,7 @@ func (e *EditorUseCase) Transform(
 		domain.NewMessage(sessionID, wrapUserText(text), domain.MessageRoleUser),
 	}
 
-	ch, err := e.llmRepo.SendMessage(ctx, sessionID, model, messages)
+	ch, err := e.llmRepo.SendMessage(ctx, sessionID, model, messages, nil, 0, nil)
 	if err != nil {
 		return "", err
 	}
@@ -50,6 +52,10 @@ func (e *EditorUseCase) Transform(
 	}
 
 	return strings.TrimSpace(b.String()), nil
+}
+
+func (e *EditorUseCase) SaveHistory(ctx context.Context, userID int, runner string, text string) error {
+	return e.historyRepo.Save(ctx, userID, runner, text)
 }
 
 func wrapUserText(text string) string {
@@ -87,7 +93,7 @@ func buildEditorSystemPrompt(t editorpb.TransformType, preserveMarkdown bool) st
 	}
 
 	return fmt.Sprintf(
-		"Ты — редактор текста. Задача: %s.\n"+
+		"Ты - редактор текста. Задача: %s.\n"+
 			"Правила:\n"+
 			"- Верни ТОЛЬКО итоговый отредактированный текст, без пояснений.\n"+
 			"- Сохраняй смысл; не добавляй новых фактов.\n"+

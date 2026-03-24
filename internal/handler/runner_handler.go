@@ -134,10 +134,11 @@ func (h *RunnerHandler) RegisterRunnerWithToken(ctx context.Context, req *llmrun
 	if err := h.validateRegistrationToken(req.GetRegistrationToken()); err != nil {
 		return nil, err
 	}
-	if h.cfg.EntryMatchingRegistrationToken(req.GetRegistrationToken()) == nil {
+	entry := h.cfg.EntryMatchingRegistrationToken(req.GetRegistrationToken())
+	if entry == nil {
 		return nil, status.Error(codes.PermissionDenied, "неверный registration_token")
 	}
-	h.registry.Register(addr)
+	h.registry.RegisterWithName(addr, entry.Name)
 	logger.I("RegisterRunnerWithToken: %s", addr)
 	return &llmrunnerpb.Empty{}, nil
 }

@@ -1,12 +1,11 @@
 import 'dart:async';
 
+import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 
 abstract interface class ChatRepository {
   Future<bool> checkConnection();
-
-  Future<List<String>> getModels();
 
   Stream<String> sendMessage(
     int sessionId,
@@ -31,8 +30,24 @@ abstract interface class ChatRepository {
   Future<ChatSession> updateSessionTitle(int sessionId, String title);
 
   Future<ChatSession> updateSessionModel(int sessionId, String model);
+  Future<ChatSessionSettings> getSessionSettings(int sessionId);
+  Future<ChatSessionSettings> updateSessionSettings({
+    required int sessionId,
+    required String systemPrompt,
+    required List<String> stopSequences,
+    required int timeoutSeconds,
+    double? temperature,
+    int? maxTokens,
+    int? topK,
+    double? topP,
+    required bool jsonMode,
+    required String jsonSchema,
+    required String toolsJson,
+    required String profile,
+  });
 
-  Future<String?> getSessionModel(int sessionId);
-
-  Future<void> setSessionModel(int sessionId, String model);
+  Future<String?> getSelectedRunner();
+  Future<void> setSelectedRunner(String? runner);
+  Future<String?> getDefaultRunnerModel(String runner);
+  Future<void> setDefaultRunnerModel(String runner, String? model);
 }

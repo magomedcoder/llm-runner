@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/magomedcoder/gen/api/pb/runnerpb"
@@ -9,33 +10,50 @@ import (
 
 type RunnerState struct {
 	Address string
+	Name    string
 	Enabled bool
 }
 
 type Registry struct {
 	mu      sync.RWMutex
-	runners map[string]bool
+	runners map[string]RunnerState
 }
 
-func NewRegistry(initialAddresses []string) *Registry {
-	runners := make(map[string]bool)
-	for _, addr := range initialAddresses {
+func NewRegistry(initial []RunnerState) *Registry {
+	runners := make(map[string]RunnerState)
+	for _, r := range initial {
+		addr := strings.TrimSpace(r.Address)
 		if addr != "" {
-			runners[addr] = true
+			runners[addr] = RunnerState{
+				Address: addr,
+				Name:    strings.TrimSpace(r.Name),
+				Enabled: true,
+			}
 		}
 	}
 	return &Registry{runners: runners}
 }
 
 func (r *Registry) Register(addr string) {
+	r.RegisterWithName(addr, "")
+}
+
+func (r *Registry) RegisterWithName(addr, name string) {
 	if addr == "" {
 		return
 	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.runners[addr]; !ok {
-		r.runners[addr] = true
+	if existing, ok := r.runners[addr]; !ok {
+		r.runners[addr] = RunnerState{
+			Address: addr,
+			Name:    strings.TrimSpace(name),
+			Enabled: true,
+		}
 		logger.I("Registry: раннер зарегистрирован: %s", addr)
+	} else if strings.TrimSpace(name) != "" && strings.TrimSpace(existing.Name) == "" {
+		existing.Name = strings.TrimSpace(name)
+		r.runners[addr] = existing
 	}
 }
 
@@ -52,10 +70,11 @@ func (r *Registry) GetRunners() []*runnerpb.RunnerInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	out := make([]*runnerpb.RunnerInfo, 0, len(r.runners))
-	for addr, enabled := range r.runners {
+	for _, state := range r.runners {
 		out = append(out, &runnerpb.RunnerInfo{
-			Address: addr,
-			Enabled: enabled,
+			Address: state.Address,
+			Name:    state.Name,
+			Enabled: state.Enabled,
 		})
 	}
 	return out
@@ -64,16 +83,17 @@ func (r *Registry) GetRunners() []*runnerpb.RunnerInfo {
 func (r *Registry) SetEnabled(addr string, enabled bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if _, ok := r.runners[addr]; ok {
-		r.runners[addr] = enabled
+	if state, ok := r.runners[addr]; ok {
+		state.Enabled = enabled
+		r.runners[addr] = state
 	}
 }
 
 func (r *Registry) HasActiveRunners() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, enabled := range r.runners {
-		if enabled {
+	for _, state := range r.runners {
+		if state.Enabled {
 			return true
 		}
 	}
@@ -84,9 +104,9 @@ func (r *Registry) GetEnabledAddresses() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var out []string
-	for addr, enabled := range r.runners {
-		if enabled {
-			out = append(out, addr)
+	for _, state := range r.runners {
+		if state.Enabled {
+			out = append(out, state.Address)
 		}
 	}
 	return out

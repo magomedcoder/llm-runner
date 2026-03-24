@@ -67,8 +67,11 @@ func main() {
 	logger.D("Миграции применены")
 
 	userRepo := postgres.NewUserRepository(db)
-	tokenRepo := postgres.NewTokenRepository(db)
+	tokenRepo := postgres.NewUserSessionRepository(db)
 	sessionRepo := postgres.NewChatSessionRepository(db)
+	chatPreferenceRepo := postgres.NewChatPreferenceRepository(db)
+	chatSessionSettingsRepo := postgres.NewChatSessionSettingsRepository(db)
+	editorHistoryRepo := postgres.NewEditorHistoryRepository(db)
 	messageRepo := postgres.NewMessageRepository(db)
 	fileRepo := postgres.NewFileRepository(db)
 
@@ -82,23 +85,27 @@ func main() {
 
 	authUseCase := usecase.NewAuthUseCase(userRepo, tokenRepo, jwtService)
 
-	var staticAddrs []string
+	var initialRunners []runner.RunnerState
 	for _, e := range cfg.Runners.Entries {
 		if a := strings.TrimSpace(e.Address); a != "" {
-			staticAddrs = append(staticAddrs, a)
+			initialRunners = append(initialRunners, runner.RunnerState{
+				Address: a,
+				Name:    strings.TrimSpace(e.Name),
+				Enabled: true,
+			})
 		}
 	}
-	if len(staticAddrs) == 0 {
+	if len(initialRunners) == 0 {
 		logger.I("Раннеры только по саморегистрации (токены из runners)")
 	}
 
-	runnerReg := runner.NewRegistry(staticAddrs)
+	runnerReg := runner.NewRegistry(initialRunners)
 	runnerPool := runner.NewPool(runnerReg)
 	defer runnerPool.Close()
 	llmRepo := runnerPool
 
-	chatUseCase := usecase.NewChatUseCase(sessionRepo, messageRepo, fileRepo, llmRepo, cfg.Attachments.SaveDir)
-	editorUseCase := usecase.NewEditorUseCase(llmRepo)
+	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, fileRepo, llmRepo, cfg.Attachments.SaveDir)
+	editorUseCase := usecase.NewEditorUseCase(llmRepo, editorHistoryRepo)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	authHandler := handler.NewAuthHandler(cfg, authUseCase)

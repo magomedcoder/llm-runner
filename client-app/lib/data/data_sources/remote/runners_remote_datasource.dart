@@ -55,6 +55,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
         }
         return domain.RunnerInfo(
           address: r.address,
+          name: r.name,
           enabled: r.enabled,
           connected: r.connected,
           gpus: gpus,

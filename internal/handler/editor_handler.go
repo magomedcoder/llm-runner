@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"github.com/magomedcoder/gen/api/pb/commonpb"
 	"github.com/magomedcoder/gen/api/pb/editorpb"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -13,6 +14,20 @@ type EditorHandler struct {
 	editorpb.UnimplementedEditorServiceServer
 	editorUseCase *usecase.EditorUseCase
 	authUseCase   *usecase.AuthUseCase
+}
+
+func (e *EditorHandler) SaveHistory(ctx context.Context, req *editorpb.SaveHistoryRequest) (*commonpb.Empty, error) {
+	user, err := GetUserFromContext(ctx, e.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+	if req == nil {
+		return &commonpb.Empty{}, nil
+	}
+	if err := e.editorUseCase.SaveHistory(ctx, user.Id, req.GetRunner(), req.GetText()); err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return &commonpb.Empty{}, nil
 }
 
 func NewEditorHandler(editorUseCase *usecase.EditorUseCase, authUseCase *usecase.AuthUseCase) *EditorHandler {

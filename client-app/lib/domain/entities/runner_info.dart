@@ -4,6 +4,7 @@ import 'package:gen/domain/entities/server_info.dart';
 
 class RunnerInfo extends Equatable {
   final String address;
+  final String name;
   final bool enabled;
   final bool connected;
   final List<GpuInfo> gpus;
@@ -11,6 +12,7 @@ class RunnerInfo extends Equatable {
 
   const RunnerInfo({
     required this.address,
+    this.name = '',
     required this.enabled,
     this.connected = false,
     this.gpus = const [],
@@ -19,5 +21,5 @@ class RunnerInfo extends Equatable {
 
   @override
   List<Object?> get props =>
-      [address, enabled, connected, gpus, serverInfo];
+      [address, name, enabled, connected, gpus, serverInfo];
 }

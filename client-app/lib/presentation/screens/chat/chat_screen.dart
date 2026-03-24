@@ -10,7 +10,10 @@ import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_app_bar_title.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_dialogs.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
+import 'package:gen/presentation/screens/chat/widgets/chat_model_selector.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_messages_panel.dart';
+import 'package:gen/presentation/screens/chat/widgets/chat_session_settings_button.dart';
+import 'package:gen/presentation/screens/chat/widgets/chat_supported_formats_button.dart';
 import 'package:gen/presentation/screens/chat/widgets/sessions_list_header.dart';
 import 'package:gen/presentation/screens/chat/widgets/sessions_sidebar.dart';
 
@@ -68,6 +71,13 @@ class _ChatScreenState extends State<ChatScreen> {
     context.read<ChatBloc>().add(const ChatCreateSession());
   }
 
+  void _createNewSessionAndCloseDrawer() {
+    _createNewSession();
+    if (Breakpoints.useDrawerForSessions(context)) {
+      Navigator.of(context).pop();
+    }
+  }
+
   void _selectSession(ChatSession session) {
     context.read<ChatBloc>().add(ChatSelectSession(session.id));
   }
@@ -102,9 +112,12 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       final bytes = await item.readAsBytes();
       final name = item.name.isNotEmpty
-          ? item.name
-          : item.path.split(RegExp(r'[/\\]')).last;
-      if (!mounted) return;
+        ? item.name
+        : item.path.split(RegExp(r'[/\\]')).last;
+      if (!mounted) {
+        return;
+      }
+
       _inputBarKey.currentState?.setDroppedFile(
         PlatformFile(name: name, size: bytes.length, bytes: bytes),
       );
@@ -127,8 +140,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return BlocListener<ChatBloc, ChatState>(
-      listenWhen: (previous, current) =>
-          previous.currentSessionId != current.currentSessionId,
+      listenWhen: (previous, current) => previous.currentSessionId != current.currentSessionId,
       listener: (context, state) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) {
@@ -147,7 +159,9 @@ class _ChatScreenState extends State<ChatScreen> {
 
           if (state.error != null) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) return;
+              if (!mounted) {
+                return;
+              }
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text(state.error!),
@@ -167,18 +181,18 @@ class _ChatScreenState extends State<ChatScreen> {
             return Scaffold(
               key: _scaffoldKey,
               drawer: useDrawer
-                  ? Drawer(
-                      backgroundColor: theme.colorScheme.surfaceContainerLow,
-                      child: SafeArea(
-                        child: SessionsSidebar(
-                          isInDrawer: true,
-                          onCreateNewSession: _createNewSession,
-                          onSelectSession: _selectSessionAndCloseDrawer,
-                          onDeleteSession: _deleteSession,
-                        ),
-                      ),
-                    )
-                  : null,
+                ? Drawer(
+                  backgroundColor: theme.colorScheme.surfaceContainerLow,
+                  child: SafeArea(
+                    child: SessionsSidebar(
+                      isInDrawer: true,
+                      onCreateNewSession: _createNewSessionAndCloseDrawer,
+                      onSelectSession: _selectSessionAndCloseDrawer,
+                      onDeleteSession: _deleteSession,
+                    ),
+                  ),
+                )
+                : null,
               body: SafeArea(
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -199,22 +213,22 @@ class _ChatScreenState extends State<ChatScreen> {
                           ),
                         ),
                         child: _isSidebarExpanded
-                            ? Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  SessionsListHeader(
-                                    onToggleCollapse: _toggleSidebar,
-                                  ),
-                                  Expanded(
-                                    child: SessionsSidebar(
-                                      onCreateNewSession: _createNewSession,
-                                      onSelectSession: _selectSession,
-                                      onDeleteSession: _deleteSession,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : const SizedBox.shrink(),
+                          ? Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              SessionsListHeader(
+                                onToggleCollapse: _toggleSidebar,
+                              ),
+                              Expanded(
+                                child: SessionsSidebar(
+                                  onCreateNewSession: _createNewSession,
+                                  onSelectSession: _selectSession,
+                                  onDeleteSession: _deleteSession,
+                                ),
+                              ),
+                            ],
+                          )
+                          : const SizedBox.shrink(),
                       ),
                     Expanded(
                       child: Material(
@@ -241,8 +255,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   if (useDrawer)
                                     IconButton(
                                       icon: const Icon(Icons.menu_rounded),
-                                      onPressed: () => _scaffoldKey.currentState
-                                          ?.openDrawer(),
+                                      onPressed: () => _scaffoldKey.currentState?.openDrawer(),
                                       tooltip: 'Список чатов',
                                     ),
                                   if (!useDrawer && !_isSidebarExpanded)
@@ -253,17 +266,28 @@ class _ChatScreenState extends State<ChatScreen> {
                                     ),
                                   Expanded(
                                     child: BlocBuilder<ChatBloc, ChatState>(
-                                      builder: (context, state) =>
-                                          ChatAppBarTitle(
-                                            state: state,
-                                            compact: useDrawer,
-                                          ),
+                                      builder: (context, state) => ChatAppBarTitle(
+                                        state: state,
+                                        compact: useDrawer,
+                                      ),
                                     ),
                                   ),
                                   BlocBuilder<ChatBloc, ChatState>(
                                     builder: (context, state) {
-                                      if (state.isLoading &&
-                                          !state.isStreaming) {
+                                      return ChatRunnerSelector(state: state);
+                                    },
+                                  ),
+                                  BlocBuilder<ChatBloc, ChatState>(
+                                    builder: (context, state) {
+                                      return ChatSessionSettingsButton(state: state);
+                                    },
+                                  ),
+                                  const SizedBox(width: 8),
+                                  const ChatSupportedFormatsButton(),
+                                  const SizedBox(width: 8),
+                                  BlocBuilder<ChatBloc, ChatState>(
+                                    builder: (context, state) {
+                                      if (state.isLoading && !state.isStreaming) {
                                         return const Padding(
                                           padding: EdgeInsets.only(right: 12),
                                           child: SizedBox(
@@ -284,20 +308,15 @@ class _ChatScreenState extends State<ChatScreen> {
                             Expanded(
                               child: BlocBuilder<ChatBloc, ChatState>(
                                 builder: (context, state) {
-                                  final canDropFile =
-                                      state.isConnected &&
-                                      !state.isLoading &&
-                                      (state.hasActiveRunners != false);
+                                  final canDropFile = state.isConnected && !state.isLoading && (state.hasActiveRunners != false);
                                   return ChatMessagesPanel(
                                     state: state,
                                     scrollController: _scrollController,
                                     inputBarKey: _inputBarKey,
                                     isDraggingFile: _isDraggingFile,
                                     canDropFile: canDropFile,
-                                    onDragEntered: (_) =>
-                                        setState(() => _isDraggingFile = true),
-                                    onDragExited: (_) =>
-                                        setState(() => _isDraggingFile = false),
+                                    onDragEntered: (_) => setState(() => _isDraggingFile = true),
+                                    onDragExited: (_) => setState(() => _isDraggingFile = false),
                                     onDragDone: _onFilesDropped,
                                   );
                                 },

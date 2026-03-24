@@ -68,7 +68,7 @@ String formatServerAddressForField(ServerConfig config) {
   return '${config.host}:${config.port}';
 }
 
-String get serverAddressInputHint => 'хост или хост:${ServerConfig.defaultPort}';
+String get serverAddressInputHint => 'хост или хост:порт';
 
 String? validateServerAddressInput(String? value) {
   if (value == null || value.trim().isEmpty) {

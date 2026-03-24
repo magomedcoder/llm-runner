@@ -28,8 +28,16 @@ func (r *LLMRunnerRepository) GetModels(ctx context.Context) ([]string, error) {
 	return r.client.GetModels(ctx)
 }
 
-func (r *LLMRunnerRepository) SendMessage(ctx context.Context, sessionID int64, model string, messages []*domain.Message) (chan string, error) {
-	return r.client.SendMessage(ctx, sessionID, model, messages)
+func (r *LLMRunnerRepository) SendMessage(
+	ctx context.Context,
+	sessionID int64,
+	model string,
+	messages []*domain.Message,
+	stopSequences []string,
+	timeoutSeconds int32,
+	genParams *domain.GenerationParams,
+) (chan string, error) {
+	return r.client.SendMessage(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
 }
 
 func (r *LLMRunnerRepository) Close() error {

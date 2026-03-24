@@ -327,14 +327,22 @@ func (p *Pool) GetModels(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
-func (p *Pool) SendMessage(ctx context.Context, sessionID int64, model string, messages []*domain.Message) (chan string, error) {
+func (p *Pool) SendMessage(
+	ctx context.Context,
+	sessionID int64,
+	model string,
+	messages []*domain.Message,
+	stopSequences []string,
+	timeoutSeconds int32,
+	genParams *domain.GenerationParams,
+) (chan string, error) {
 	client, addr, err := p.pickRunner(ctx, model)
 	if err != nil {
 		return nil, err
 	}
 	ai := p.getOrCreateInflight(addr)
 	ai.Add(1)
-	ch, err := client.SendMessage(ctx, sessionID, model, messages)
+	ch, err := client.SendMessage(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
 		ai.Add(-1)
 		return nil, err

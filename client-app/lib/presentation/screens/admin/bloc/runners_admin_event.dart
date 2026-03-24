@@ -27,3 +27,25 @@ class RunnersAdminSetEnabledRequested extends RunnersAdminEvent {
 class RunnersAdminClearError extends RunnersAdminEvent {
   const RunnersAdminClearError();
 }
+
+class RunnersAdminDefaultRunnerChanged extends RunnersAdminEvent {
+  final String? address;
+
+  const RunnersAdminDefaultRunnerChanged(this.address);
+
+  @override
+  List<Object?> get props => [address];
+}
+
+class RunnersAdminDefaultModelChanged extends RunnersAdminEvent {
+  final String runnerAddress;
+  final String? model;
+
+  const RunnersAdminDefaultModelChanged({
+    required this.runnerAddress,
+    required this.model,
+  });
+
+  @override
+  List<Object?> get props => [runnerAddress, model];
+}

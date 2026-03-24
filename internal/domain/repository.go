@@ -40,6 +40,22 @@ type ChatSessionRepository interface {
 	Delete(ctx context.Context, id int64) error
 }
 
+type ChatPreferenceRepository interface {
+	GetSelectedRunner(ctx context.Context, userID int) (string, error)
+
+	SetSelectedRunner(ctx context.Context, userID int, runner string) error
+
+	GetDefaultRunnerModel(ctx context.Context, userID int, runner string) (string, error)
+
+	SetDefaultRunnerModel(ctx context.Context, userID int, runner string, model string) error
+}
+
+type ChatSessionSettingsRepository interface {
+	GetBySessionID(ctx context.Context, sessionID int64) (*ChatSessionSettings, error)
+
+	Upsert(ctx context.Context, settings *ChatSessionSettings) error
+}
+
 type MessageRepository interface {
 	Create(ctx context.Context, message *Message) error
 
@@ -56,10 +72,42 @@ type FileRepository interface {
 	GetById(ctx context.Context, id int64) (*File, error)
 }
 
+type EditorHistoryRepository interface {
+	Save(ctx context.Context, userID int, runner string, text string) error
+}
+
+type ResponseFormat struct {
+	Type   string
+	Schema *string
+}
+
+type Tool struct {
+	Name           string
+	Description    string
+	ParametersJSON string
+}
+
+type GenerationParams struct {
+	Temperature    *float32
+	MaxTokens      *int32
+	TopK           *int32
+	TopP           *float32
+	ResponseFormat *ResponseFormat
+	Tools          []Tool
+}
+
 type LLMRepository interface {
 	CheckConnection(ctx context.Context) (bool, error)
 
 	GetModels(ctx context.Context) ([]string, error)
 
-	SendMessage(ctx context.Context, sessionID int64, model string, messages []*Message) (chan string, error)
+	SendMessage(
+		ctx context.Context,
+		sessionID int64,
+		model string,
+		messages []*Message,
+		stopSequences []string,
+		timeoutSeconds int32,
+		genParams *GenerationParams,
+	) (chan string, error)
 }

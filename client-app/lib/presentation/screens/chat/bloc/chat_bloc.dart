@@ -6,18 +6,21 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/log/logs.dart';
 import 'package:gen/core/request_logout_on_unauthorized.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/usecases/chat/connect_usecase.dart';
 import 'package:gen/domain/usecases/chat/create_session_usecase.dart';
 import 'package:gen/domain/usecases/chat/delete_session_usecase.dart';
-import 'package:gen/domain/usecases/chat/get_models_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_session_messages_usecase.dart';
-import 'package:gen/domain/usecases/chat/get_session_model_usecase.dart';
 import 'package:gen/domain/usecases/chat/get_sessions_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_selected_runner_usecase.dart';
+import 'package:gen/domain/usecases/chat/get_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/send_message_usecase.dart';
-import 'package:gen/domain/usecases/chat/set_session_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/set_selected_runner_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_model_usecase.dart';
+import 'package:gen/domain/usecases/chat/update_session_settings_usecase.dart';
 import 'package:gen/domain/usecases/chat/update_session_title_usecase.dart';
+import 'package:gen/domain/usecases/runners/get_runners_usecase.dart';
 import 'package:gen/domain/usecases/runners/get_runners_status_usecase.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
@@ -28,10 +31,10 @@ int _localTempMessageId() => -DateTime.now().microsecondsSinceEpoch;
 class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final AuthBloc authBloc;
   final ConnectUseCase connectUseCase;
-  final GetModelsUseCase getModelsUseCase;
-  final GetSessionModelUseCase getSessionModelUseCase;
-  final SetSessionModelUseCase setSessionModelUseCase;
+  final GetRunnersUseCase getRunnersUseCase;
   final UpdateSessionModelUseCase updateSessionModelUseCase;
+  final GetSessionSettingsUseCase getSessionSettingsUseCase;
+  final UpdateSessionSettingsUseCase updateSessionSettingsUseCase;
   final SendMessageUseCase sendMessageUseCase;
   final CreateSessionUseCase createSessionUseCase;
   final GetSessionsUseCase getSessionsUseCase;
@@ -39,6 +42,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   final DeleteSessionUseCase deleteSessionUseCase;
   final UpdateSessionTitleUseCase updateSessionTitleUseCase;
   final GetRunnersStatusUseCase getRunnersStatusUseCase;
+  final GetSelectedRunnerUseCase getSelectedRunnerUseCase;
+  final SetSelectedRunnerUseCase setSelectedRunnerUseCase;
 
   StreamSubscription<String>? _streamSubscription;
   Completer<bool>? _streamCompleter;
@@ -46,10 +51,10 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
   ChatBloc({
     required this.authBloc,
     required this.connectUseCase,
-    required this.getModelsUseCase,
-    required this.getSessionModelUseCase,
-    required this.setSessionModelUseCase,
+    required this.getRunnersUseCase,
     required this.updateSessionModelUseCase,
+    required this.getSessionSettingsUseCase,
+    required this.updateSessionSettingsUseCase,
     required this.sendMessageUseCase,
     required this.createSessionUseCase,
     required this.getSessionsUseCase,
@@ -57,6 +62,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     required this.deleteSessionUseCase,
     required this.updateSessionTitleUseCase,
     required this.getRunnersStatusUseCase,
+    required this.getSelectedRunnerUseCase,
+    required this.setSelectedRunnerUseCase,
   }) : super(const ChatState()) {
     on<ChatStarted>(_onChatStarted);
     on<ChatCreateSession>(_onCreateSession);
@@ -66,10 +73,24 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatSendMessage>(_onChatSendMessage, transformer: droppable());
     on<ChatClearError>(_onChatClearError);
     on<ChatStopGeneration>(_onChatStopGeneration);
+    on<ChatRetryLastMessage>(_onRetryLastMessage);
     on<ChatDeleteSession>(_onDeleteSession);
     on<ChatUpdateSessionTitle>(_onUpdateSessionTitle);
-    on<ChatLoadModels>(_onLoadModels);
-    on<ChatSelectModel>(_onSelectModel);
+    on<ChatLoadRunners>(_onLoadRunners);
+    on<ChatSelectRunner>(_onSelectRunner);
+    on<ChatLoadSessionSettings>(_onLoadSessionSettings);
+    on<ChatUpdateSessionSettings>(_onUpdateSessionSettings);
+  }
+
+  List<String> _extractAvailableRunners(List<RunnerInfo> runners) {
+    final addresses = <String>{
+      for (final runner in runners)
+        if (runner.enabled && runner.address.isNotEmpty)
+          runner.address,
+    };
+    final sorted = addresses.toList()..sort();
+
+    return sorted;
   }
 
   Future<void> _onChatStarted(
@@ -92,15 +113,20 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       if (isConnected) {
         try {
           final sessionsFuture = getSessionsUseCase(page: 1, pageSize: 20);
-          final modelsFuture = getModelsUseCase();
+          final runnersFuture = getRunnersUseCase();
 
           final sessions = await sessionsFuture;
-          List<String> models = const [];
-          String? selectedModel;
+          List<String> runners = const [];
+          String? selectedRunner;
           try {
-            models = await modelsFuture;
-            if (models.isNotEmpty && state.selectedModel == null) {
-              selectedModel = models.first;
+            runners = _extractAvailableRunners(await runnersFuture);
+            if (runners.isNotEmpty && state.selectedRunner == null) {
+              final defaultRunner = await getSelectedRunnerUseCase();
+              if (defaultRunner != null && runners.contains(defaultRunner)) {
+                selectedRunner = defaultRunner;
+              } else {
+                selectedRunner = runners.first;
+              }
             }
           } catch (_) {}
 
@@ -116,51 +142,42 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               pageSize: 50,
             );
             messages = sessionMessages;
+            try {
+              final s = await getSessionSettingsUseCase(currentSessionId);
+              emit(state.copyWith(sessionSettings: s));
+            } catch (_) {}
 
-            if (selectedModel == null && models.isNotEmpty && sessions.isNotEmpty) {
+            if (selectedRunner == null && runners.isNotEmpty && sessions.isNotEmpty) {
               final firstSession = sessions.first;
-              if (firstSession.model != null &&
-                  firstSession.model!.isNotEmpty &&
-                  models.contains(firstSession.model)) {
-                selectedModel = firstSession.model;
+              if (firstSession.model != null && firstSession.model!.isNotEmpty && runners.contains(firstSession.model)) {
+                selectedRunner = firstSession.model;
               } else {
-                try {
-                  final savedModel = await getSessionModelUseCase(
-                    currentSessionId,
-                  );
-                  if (savedModel != null && models.contains(savedModel)) {
-                    selectedModel = savedModel;
-                  }
-                } catch (_) {}
+                selectedRunner = runners.first;
               }
             }
           }
 
           Logs().i('ChatBloc: чат загружен, сессий: ${sessions.length}');
-          emit(
-            state.copyWith(
+          emit(state.copyWith(
               isConnected: isConnected,
               isLoading: false,
               sessions: sessions,
               currentSessionId: currentSessionId,
               messages: messages,
-              models: models,
-              selectedModel: selectedModel ?? state.selectedModel,
+              runners: runners,
+              selectedRunner: selectedRunner ?? state.selectedRunner,
               hasActiveRunners: hasActiveRunners,
               error: null,
-            ),
-          );
+            ));
         } catch (e) {
           Logs().e('ChatBloc: ошибка загрузки сессий', exception: e);
           requestLogoutIfUnauthorized(e, authBloc);
-          emit(
-            state.copyWith(
-              isConnected: isConnected,
-              isLoading: false,
-              hasActiveRunners: hasActiveRunners,
-              error: 'Ошибка загрузки сессий',
-            ),
-          );
+          emit(state.copyWith(
+            isConnected: isConnected,
+            isLoading: false,
+            hasActiveRunners: hasActiveRunners,
+            error: 'Ошибка загрузки сессий',
+          ));
         }
       } else {
         Logs().w('ChatBloc: не удалось подключиться к серверу');
@@ -175,13 +192,11 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     } catch (e) {
       Logs().e('ChatBloc: ошибка подключения', exception: e);
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(
-          isConnected: false,
-          isLoading: false,
-          error: 'Ошибка подключения',
-        ),
-      );
+      emit(state.copyWith(
+        isConnected: false,
+        isLoading: false,
+        error: 'Ошибка подключения',
+      ));
     }
   }
 
@@ -202,16 +217,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     _streamSubscription = null;
     _streamCompleter = null;
 
-    emit(
-      state.copyWith(
-        currentSessionId: null,
-        messages: const [],
-        error: null,
-        currentStreamingText: null,
-        isLoading: false,
-        isStreaming: false,
-      ),
-    );
+    emit(state.copyWith(
+      currentSessionId: null,
+      messages: const [],
+      error: null,
+      currentStreamingText: null,
+      isLoading: false,
+      isStreaming: false,
+    ));
   }
 
   Future<void> _onLoadSessions(
@@ -241,14 +254,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       return;
     }
 
-    emit(
-      state.copyWith(
-        currentSessionId: event.sessionId,
-        messages: const [],
-        isLoading: true,
-        error: null,
-      ),
-    );
+    emit(state.copyWith(
+      currentSessionId: event.sessionId,
+      messages: const [],
+      isLoading: true,
+      error: null,
+    ));
 
     try {
       final messages = await getSessionMessagesUseCase(
@@ -257,8 +268,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         pageSize: 50,
       );
 
-      String? modelForSession = state.selectedModel;
-      if (state.models.isNotEmpty) {
+      String? runnerForSession = state.selectedRunner;
+      if (state.runners.isNotEmpty) {
         ChatSession? serverSession;
         for (final s in state.sessions) {
           if (s.id == event.sessionId) {
@@ -269,35 +280,25 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
         if (serverSession?.model != null &&
             serverSession!.model!.isNotEmpty &&
-            state.models.contains(serverSession.model)) {
-          modelForSession = serverSession.model;
+            state.runners.contains(serverSession.model)) {
+          runnerForSession = serverSession.model;
         } else {
-          try {
-            final savedModel = await getSessionModelUseCase(event.sessionId);
-            if (savedModel != null && state.models.contains(savedModel)) {
-              modelForSession = savedModel;
-            } else if (modelForSession == null ||
-                !state.models.contains(modelForSession)) {
-              modelForSession = state.models.first;
-            }
-          } catch (_) {
-            modelForSession ??= state.models.first;
+          if (runnerForSession == null ||
+              !state.runners.contains(runnerForSession)) {
+            runnerForSession ??= state.runners.first;
           }
         }
       }
 
-      emit(
-        state.copyWith(
-          messages: messages,
-          isLoading: false,
-          selectedModel: modelForSession,
-        ),
-      );
+      emit(state.copyWith(
+        messages: messages,
+        isLoading: false,
+        selectedRunner: runnerForSession,
+      ));
+      add(ChatLoadSessionSettings(event.sessionId));
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'),
-      );
+      emit(state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'));
     }
   }
 
@@ -316,26 +317,49 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final allMessages = [...state.messages, ...messages];
 
-      emit(
-        state.copyWith(messages: allMessages, isLoading: false, error: null),
-      );
+      emit(state.copyWith(messages: allMessages, isLoading: false, error: null));
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'),
-      );
+      emit(state.copyWith(isLoading: false, error: 'Ошибка загрузки сообщений'),);
     }
+  }
+
+  bool _isSameAttachment(List<int>? a, Uint8List? b) {
+    if (a == null && b == null) {
+      return true;
+    }
+
+    if (a == null || b == null) {
+      return false;
+    }
+
+    if (a.length != b.length) {
+      return false;
+    }
+
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) {
+        return false;
+      }
+    }
+
+    return true;
   }
 
   Future<void> _onChatSendMessage(
     ChatSendMessage event,
     Emitter<ChatState> emit,
   ) async {
+    await _sendMessageInternal(event, emit, allowReuseLastUserMessage: false);
+  }
+
+  Future<void> _sendMessageInternal(
+    ChatSendMessage event,
+    Emitter<ChatState> emit, {
+    required bool allowReuseLastUserMessage,
+  }) async {
     final text = event.text.trim();
-    final hasAttachment =
-        event.attachmentFileName != null &&
-        event.attachmentContent != null &&
-        event.attachmentContent!.isNotEmpty;
+    final hasAttachment = event.attachmentFileName != null && event.attachmentContent != null && event.attachmentContent!.isNotEmpty;
     if (text.isEmpty && !hasAttachment) {
       return;
     }
@@ -351,30 +375,25 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (sessionId == null) {
       try {
         final session = await createSessionUseCase(
-          model:
-              state.selectedModel ??
-              (state.models.isNotEmpty ? state.models.first : null),
+          model: state.selectedRunner ?? (state.runners.isNotEmpty ? state.runners.first : null),
         );
         sessionId = session.id;
 
-        final modelToSave =
-            state.selectedModel ??
-            (state.models.isNotEmpty ? state.models.first : null);
+        final modelToSave = state.selectedRunner ?? (state.runners.isNotEmpty ? state.runners.first : null);
         if (modelToSave != null) {
           try {
-            await setSessionModelUseCase(sessionId, modelToSave);
+            await updateSessionModelUseCase(sessionId, modelToSave);
           } catch (_) {}
         }
 
         final updatedSessions = [session, ...state.sessions];
 
-        emit(
-          state.copyWith(
-            currentSessionId: sessionId,
-            sessions: updatedSessions,
-            messages: const [],
-          ),
-        );
+        emit(state.copyWith(
+          currentSessionId: sessionId,
+          sessions: updatedSessions,
+          messages: const [],
+        ));
+        add(ChatLoadSessionSettings(sessionId));
       } catch (e) {
         requestLogoutIfUnauthorized(e, authBloc);
         emit(state.copyWith(error: 'Ошибка создания сессии', isLoading: false));
@@ -389,22 +408,32 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       createdAt: DateTime.now(),
       attachmentFileName: event.attachmentFileName,
       attachmentContent: event.attachmentContent != null
-          ? Uint8List.fromList(event.attachmentContent!)
-          : null,
+        ? Uint8List.fromList(event.attachmentContent!)
+        : null,
     );
 
-    final updatedMessages = [...state.messages, userMessage];
+    var updatedMessages = [...state.messages, userMessage];
+    if (allowReuseLastUserMessage && state.messages.isNotEmpty) {
+      final last = state.messages.last;
+      final sameUserMessage =
+          last.role == MessageRole.user &&
+          last.content == text &&
+          last.attachmentFileName == event.attachmentFileName &&
+          _isSameAttachment(event.attachmentContent, last.attachmentContent);
+      if (sameUserMessage) {
+        updatedMessages = [...state.messages];
+      }
+    }
     String streamingText = '';
 
-    emit(
-      state.copyWith(
-        messages: updatedMessages,
-        isLoading: true,
-        isStreaming: true,
-        currentStreamingText: '',
-        error: null,
-      ),
-    );
+    emit(state.copyWith(
+      messages: updatedMessages,
+      isLoading: true,
+      isStreaming: true,
+      currentStreamingText: '',
+      error: null,
+      clearRetryPayload: true,
+    ));
 
     _streamCompleter = Completer<bool>();
 
@@ -412,7 +441,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       final stream = sendMessageUseCase(
         sessionId,
         updatedMessages,
-        model: state.selectedModel,
+        model: state.selectedRunner,
       );
 
       _streamSubscription = stream.listen(
@@ -449,37 +478,94 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
         final allMessages = [...updatedMessages, assistantMessage];
 
-        emit(
-          state.copyWith(
-            messages: allMessages,
-            isLoading: false,
-            isStreaming: false,
-            currentStreamingText: null,
-          ),
-        );
+        emit(state.copyWith(
+          messages: allMessages,
+          isLoading: false,
+          isStreaming: false,
+          currentStreamingText: null,
+          clearRetryPayload: true,
+        ));
       } else {
-        emit(
-          state.copyWith(
-            isLoading: false,
-            isStreaming: false,
-            currentStreamingText: null,
-          ),
-        );
+        emit(state.copyWith(
+          isLoading: false,
+          isStreaming: false,
+          currentStreamingText: null,
+          clearRetryPayload: true,
+        ));
       }
     } on Object catch (e) {
       Logs().e('ChatBloc: ошибка отправки сообщения', exception: e);
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(
-          isLoading: false,
-          isStreaming: false,
-          error: 'Ошибка отправки сообщения',
-        ),
-      );
+      emit(state.copyWith(
+        isLoading: false,
+        isStreaming: false,
+        error: 'Ошибка отправки сообщения',
+        retryText: event.text,
+        retryAttachmentFileName: event.attachmentFileName,
+        retryAttachmentContent: event.attachmentContent,
+      ));
     } finally {
       await _streamSubscription?.cancel();
       _streamSubscription = null;
       _streamCompleter = null;
+    }
+  }
+
+  Future<void> _onRetryLastMessage(
+    ChatRetryLastMessage event,
+    Emitter<ChatState> emit,
+  ) async {
+    final retryText = state.retryText;
+    if (retryText == null || retryText.trim().isEmpty) {
+      return;
+    }
+    await _sendMessageInternal(
+      ChatSendMessage(
+        retryText,
+        attachmentFileName: state.retryAttachmentFileName,
+        attachmentContent: state.retryAttachmentContent,
+      ),
+      emit,
+      allowReuseLastUserMessage: true,
+    );
+  }
+
+  Future<void> _onLoadSessionSettings(
+    ChatLoadSessionSettings event,
+    Emitter<ChatState> emit,
+  ) async {
+    try {
+      final settings = await getSessionSettingsUseCase(event.sessionId);
+      emit(state.copyWith(sessionSettings: settings));
+    } catch (_) {}
+  }
+
+  Future<void> _onUpdateSessionSettings(
+    ChatUpdateSessionSettings event,
+    Emitter<ChatState> emit,
+  ) async {
+    final sessionId = state.currentSessionId;
+    if (sessionId == null) {
+      return;
+    }
+    try {
+      final settings = await updateSessionSettingsUseCase(
+        sessionId: sessionId,
+        systemPrompt: event.systemPrompt,
+        stopSequences: event.stopSequences,
+        timeoutSeconds: event.timeoutSeconds,
+        temperature: event.temperature,
+        maxTokens: event.maxTokens,
+        topK: event.topK,
+        topP: event.topP,
+        jsonMode: event.jsonMode,
+        jsonSchema: event.jsonSchema,
+        toolsJson: event.toolsJson,
+        profile: event.profile,
+      );
+      emit(state.copyWith(sessionSettings: settings));
+    } catch (e) {
+      emit(state.copyWith(error: 'Ошибка сохранения настроек чата'));
     }
   }
 
@@ -498,15 +584,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final shouldClearCurrent = state.currentSessionId == event.sessionId;
 
-      emit(
-        state.copyWith(
-          sessions: updatedSessions,
-          currentSessionId: shouldClearCurrent ? null : state.currentSessionId,
-          messages: shouldClearCurrent ? const [] : state.messages,
-          isLoading: false,
-          error: null,
-        ),
-      );
+      emit(state.copyWith(
+        sessions: updatedSessions,
+        currentSessionId: shouldClearCurrent ? null : state.currentSessionId,
+        messages: shouldClearCurrent ? const [] : state.messages,
+        isLoading: false,
+        error: null,
+      ));
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
       emit(state.copyWith(isLoading: false, error: 'Ошибка удаления сессии'));
@@ -532,58 +616,55 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         return session;
       }).toList();
 
-      emit(
-        state.copyWith(
-          sessions: updatedSessions,
-          isLoading: false,
-          error: null,
-        ),
-      );
+      emit(state.copyWith(
+        sessions: updatedSessions,
+        isLoading: false,
+        error: null,
+      ));
     } catch (e) {
       requestLogoutIfUnauthorized(e, authBloc);
-      emit(
-        state.copyWith(isLoading: false, error: 'Ошибка обновления заголовка'),
-      );
+      emit(state.copyWith(isLoading: false, error: 'Ошибка обновления заголовка'));
     }
   }
 
-  Future<void> _onLoadModels(
-    ChatLoadModels event,
+  Future<void> _onLoadRunners(
+    ChatLoadRunners event,
     Emitter<ChatState> emit,
   ) async {
     try {
-      final models = await getModelsUseCase();
-      String? selectedModel = state.selectedModel;
-      if (models.isNotEmpty && selectedModel == null) {
-        selectedModel = models.first;
+      final runners = _extractAvailableRunners(await getRunnersUseCase());
+      String? selectedRunner = state.selectedRunner;
+      if (runners.isNotEmpty && selectedRunner == null) {
+        final defaultRunner = await getSelectedRunnerUseCase();
+        if (defaultRunner != null && runners.contains(defaultRunner)) {
+          selectedRunner = defaultRunner;
+        } else {
+          selectedRunner = runners.first;
+        }
       }
 
-      if (models.isNotEmpty &&
-          selectedModel != null &&
-          !models.contains(selectedModel)) {
-        selectedModel = models.first;
+      if (runners.isNotEmpty && selectedRunner != null && !runners.contains(selectedRunner)) {
+        selectedRunner = runners.first;
       }
 
-      emit(
-        state.copyWith(
-          models: models,
-          selectedModel: selectedModel ?? state.selectedModel,
-        ),
-      );
+      emit(state.copyWith(
+        runners: runners,
+        selectedRunner: selectedRunner ?? state.selectedRunner,
+      ));
     } catch (_) {}
   }
 
-  Future<void> _onSelectModel(
-    ChatSelectModel event,
+  Future<void> _onSelectRunner(
+    ChatSelectRunner event,
     Emitter<ChatState> emit,
   ) async {
     final sessionId = state.currentSessionId;
+    try {
+      await setSelectedRunnerUseCase(event.runner);
+    } catch (_) {}
     if (sessionId != null) {
       try {
-        await updateSessionModelUseCase(sessionId, event.model);
-      } catch (_) {}
-      try {
-        await setSessionModelUseCase(sessionId, event.model);
+        await updateSessionModelUseCase(sessionId, event.runner);
       } catch (_) {}
     }
     final updatedSessions = state.sessions.map((s) {
@@ -593,12 +674,14 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           title: s.title,
           createdAt: s.createdAt,
           updatedAt: s.updatedAt,
-          model: event.model,
+          model: event.runner,
         );
       }
       return s;
     }).toList();
-    emit(state.copyWith(selectedModel: event.model, sessions: updatedSessions));
+    emit(
+      state.copyWith(selectedRunner: event.runner, sessions: updatedSessions),
+    );
   }
 
   void _onChatClearError(ChatClearError event, Emitter<ChatState> emit) {
@@ -627,22 +710,18 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
 
       final allMessages = [...state.messages, assistantMessage];
 
-      emit(
-        state.copyWith(
-          messages: allMessages,
-          isLoading: false,
-          isStreaming: false,
-          currentStreamingText: null,
-        ),
-      );
+      emit(state.copyWith(
+        messages: allMessages,
+        isLoading: false,
+        isStreaming: false,
+        currentStreamingText: null,
+      ));
     } else {
-      emit(
-        state.copyWith(
-          isLoading: false,
-          isStreaming: false,
-          currentStreamingText: null,
-        ),
-      );
+      emit(state.copyWith(
+        isLoading: false,
+        isStreaming: false,
+        currentStreamingText: null,
+      ));
     }
   }
 
@@ -652,6 +731,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
       _streamCompleter!.complete(true);
     }
+
     return super.close();
   }
 }

@@ -1,17 +1,16 @@
 import 'dart:async';
 
 import 'package:gen/core/failures.dart';
-import 'package:gen/data/data_sources/local/session_model_local_data_source.dart';
 import 'package:gen/data/data_sources/remote/chat_remote_datasource.dart';
+import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/repositories/chat_repository.dart';
 
 class ChatRepositoryImpl implements ChatRepository {
   final IChatRemoteDataSource dataSource;
-  final SessionModelLocalDataSource localDataSource;
 
-  ChatRepositoryImpl(this.dataSource, this.localDataSource);
+  ChatRepositoryImpl(this.dataSource);
 
   @override
   Future<bool> checkConnection() async {
@@ -23,26 +22,13 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<List<String>> getModels() async {
-    try {
-      return await dataSource.getModels();
-    } catch (e) {
-      throw ApiFailure('Ошибка получения списка моделей: $e');
-    }
-  }
-
-  @override
   Stream<String> sendMessage(
     int sessionId,
     List<Message> messages, {
     String? model,
   }) {
     try {
-      return dataSource.sendChatMessage(
-        sessionId,
-        messages,
-        model: model,
-      );
+      return dataSource.sendChatMessage(sessionId, messages, model: model);
     } catch (e) {
       throw ApiFailure('Ошибка создания потока сообщений: $e');
     }
@@ -116,20 +102,82 @@ class ChatRepositoryImpl implements ChatRepository {
   }
 
   @override
-  Future<String?> getSessionModel(int sessionId) async {
+  Future<ChatSessionSettings> getSessionSettings(int sessionId) async {
     try {
-      return await localDataSource.getSessionModel(sessionId);
+      return await dataSource.getSessionSettings(sessionId);
     } catch (e) {
-      return null;
+      throw ApiFailure('Ошибка загрузки настроек чата: $e');
     }
   }
 
   @override
-  Future<void> setSessionModel(int sessionId, String model) async {
+  Future<ChatSessionSettings> updateSessionSettings({
+    required int sessionId,
+    required String systemPrompt,
+    required List<String> stopSequences,
+    required int timeoutSeconds,
+    double? temperature,
+    int? maxTokens,
+    int? topK,
+    double? topP,
+    required bool jsonMode,
+    required String jsonSchema,
+    required String toolsJson,
+    required String profile,
+  }) async {
     try {
-      await localDataSource.setSessionModel(sessionId, model);
+      return await dataSource.updateSessionSettings(
+        sessionId: sessionId,
+        systemPrompt: systemPrompt,
+        stopSequences: stopSequences,
+        timeoutSeconds: timeoutSeconds,
+        temperature: temperature,
+        maxTokens: maxTokens,
+        topK: topK,
+        topP: topP,
+        jsonMode: jsonMode,
+        jsonSchema: jsonSchema,
+        toolsJson: toolsJson,
+        profile: profile,
+      );
     } catch (e) {
-      throw ApiFailure('Ошибка сохранения модели сессии: $e');
+      throw ApiFailure('Ошибка сохранения настроек чата: $e');
+    }
+  }
+
+  @override
+  Future<String?> getSelectedRunner() async {
+    try {
+      return await dataSource.getSelectedRunner();
+    } catch (e) {
+      throw ApiFailure('Ошибка получения выбранного раннера: $e');
+    }
+  }
+
+  @override
+  Future<void> setSelectedRunner(String? runner) async {
+    try {
+      await dataSource.setSelectedRunner(runner);
+    } catch (e) {
+      throw ApiFailure('Ошибка сохранения выбранного раннера: $e');
+    }
+  }
+
+  @override
+  Future<String?> getDefaultRunnerModel(String runner) async {
+    try {
+      return await dataSource.getDefaultRunnerModel(runner);
+    } catch (e) {
+      throw ApiFailure('Ошибка получения модели по умолчанию: $e');
+    }
+  }
+
+  @override
+  Future<void> setDefaultRunnerModel(String runner, String? model) async {
+    try {
+      await dataSource.setDefaultRunnerModel(runner, model);
+    } catch (e) {
+      throw ApiFailure('Ошибка сохранения модели по умолчанию: $e');
     }
   }
 }

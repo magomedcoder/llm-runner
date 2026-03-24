@@ -7,11 +7,13 @@ class AppSideNavDestination {
     required this.icon,
     required this.selectedIcon,
     required this.label,
+    this.alignBottom = false,
   });
 
   final IconData icon;
   final IconData selectedIcon;
   final String label;
+  final bool alignBottom;
 }
 
 class AppSideNavigationRail extends StatelessWidget {
@@ -44,6 +46,12 @@ class AppSideNavigationRail extends StatelessWidget {
     final unselectedIconTheme = navTheme.unselectedIconTheme ?? const IconThemeData.fallback();
     final railWidth = navTheme.minWidth ?? 80.0;
     final itemH = _itemExtent(indicatorSize);
+    final indexed = List.generate(destinations.length, (i) => (
+      index: i,
+      destination: destinations[i]
+    ));
+    final topItems = indexed.where((e) => !e.destination.alignBottom).toList();
+    final bottomItems = indexed.where((e) => e.destination.alignBottom).toList();
 
     return Material(
       color: bg,
@@ -53,20 +61,34 @@ class AppSideNavigationRail extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             const SizedBox(height: 8),
-            for (int i = 0; i < destinations.length; i++) ...[
+            for (int i = 0; i < topItems.length; i++) ...[
               _SideNavItem(
-                selected: selectedIndex == i,
-                destination: destinations[i],
+                selected: selectedIndex == topItems[i].index,
+                destination: topItems[i].destination,
                 itemHeight: itemH,
                 indicatorSize: indicatorSize,
                 indicatorColor: indicatorColor,
                 selectedIconTheme: selectedIconTheme,
                 unselectedIconTheme: unselectedIconTheme,
-                onTap: () => onDestinationSelected(i),
+                onTap: () => onDestinationSelected(topItems[i].index),
               ),
-              if (i < destinations.length - 1) const SizedBox(height: 4),
+              if (i < topItems.length - 1) const SizedBox(height: 4),
             ],
             const Spacer(),
+            for (int i = 0; i < bottomItems.length; i++) ...[
+              _SideNavItem(
+                selected: selectedIndex == bottomItems[i].index,
+                destination: bottomItems[i].destination,
+                itemHeight: itemH,
+                indicatorSize: indicatorSize,
+                indicatorColor: indicatorColor,
+                selectedIconTheme: selectedIconTheme,
+                unselectedIconTheme: unselectedIconTheme,
+                onTap: () => onDestinationSelected(bottomItems[i].index),
+              ),
+              if (i < bottomItems.length - 1) const SizedBox(height: 4),
+            ],
+            if (bottomItems.isNotEmpty) const SizedBox(height: 8),
           ],
         ),
       ),

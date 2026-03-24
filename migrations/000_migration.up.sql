@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS users
     deleted_at      TIMESTAMP           NULL
 );
 
-CREATE TABLE IF NOT EXISTS tokens
+CREATE TABLE IF NOT EXISTS user_sessions
 (
     id         SERIAL PRIMARY KEY,
     user_id    INTEGER     NOT NULL REFERENCES users (id),
@@ -56,13 +56,55 @@ CREATE TABLE IF NOT EXISTS messages
     deleted_at         TIMESTAMP    NULL
 );
 
+CREATE TABLE IF NOT EXISTS user_chat_preferences
+(
+    user_id         INTEGER PRIMARY KEY REFERENCES users (id) ON DELETE CASCADE,
+    selected_runner VARCHAR(255) NOT NULL DEFAULT '',
+    updated_at      TIMESTAMP    NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS user_runner_models
+(
+    user_id        INTEGER      NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    runner_address VARCHAR(255) NOT NULL,
+    model          VARCHAR(255) NOT NULL DEFAULT '',
+    updated_at     TIMESTAMP    NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, runner_address)
+);
+
+CREATE TABLE IF NOT EXISTS editor_text_history
+(
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    INTEGER   NOT NULL REFERENCES users (id) ON DELETE CASCADE,
+    runner     VARCHAR(255) NOT NULL DEFAULT '',
+    text       TEXT      NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS chat_session_settings
+(
+    session_id       BIGINT PRIMARY KEY REFERENCES chat_sessions (id) ON DELETE CASCADE,
+    system_prompt    TEXT      NOT NULL DEFAULT '',
+    stop_sequences   TEXT[]    NOT NULL DEFAULT '{}',
+    timeout_seconds  INTEGER   NOT NULL DEFAULT 0,
+    temperature      REAL      NULL,
+    max_tokens       INTEGER   NULL,
+    top_k            INTEGER   NULL,
+    top_p            REAL      NULL,
+    json_mode        BOOLEAN   NOT NULL DEFAULT FALSE,
+    json_schema      TEXT      NOT NULL DEFAULT '',
+    tools_json       TEXT      NOT NULL DEFAULT '',
+    profile          VARCHAR(64) NOT NULL DEFAULT '',
+    updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 CREATE INDEX idx_users_username ON users (username);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users (role);
 CREATE INDEX IF NOT EXISTS idx_users_deleted_at ON users (deleted_at);
-CREATE INDEX idx_tokens_user_id ON tokens (user_id);
-CREATE INDEX idx_tokens_token ON tokens (token);
-CREATE INDEX idx_tokens_expires_at ON tokens (expires_at);
-CREATE INDEX idx_tokens_deleted_at ON tokens (deleted_at);
+CREATE INDEX idx_user_sessions_user_id ON user_sessions (user_id);
+CREATE INDEX idx_user_sessions_token ON user_sessions (token);
+CREATE INDEX idx_user_sessions_expires_at ON user_sessions (expires_at);
+CREATE INDEX idx_user_sessions_deleted_at ON user_sessions (deleted_at);
 CREATE INDEX idx_chat_sessions_user_id ON chat_sessions (user_id);
 CREATE INDEX idx_chat_sessions_created_at ON chat_sessions (created_at);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_deleted_at ON chat_sessions (deleted_at);
@@ -72,3 +114,7 @@ CREATE INDEX idx_messages_role ON messages (role);
 CREATE INDEX idx_messages_created_at ON messages (created_at);
 CREATE INDEX IF NOT EXISTS idx_messages_deleted_at ON messages (deleted_at);
 CREATE INDEX IF NOT EXISTS idx_messages_attachment_file_id ON messages (attachment_file_id);
+CREATE INDEX IF NOT EXISTS idx_user_runner_models_user_id ON user_runner_models (user_id);
+CREATE INDEX IF NOT EXISTS idx_editor_text_history_user_id ON editor_text_history (user_id);
+CREATE INDEX IF NOT EXISTS idx_editor_text_history_created_at ON editor_text_history (created_at);
+CREATE INDEX IF NOT EXISTS idx_chat_session_settings_updated_at ON chat_session_settings (updated_at);

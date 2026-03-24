@@ -8,11 +8,15 @@ import 'package:gen/presentation/screens/admin/widgets/runner_status.dart';
 class RunnerCard extends StatelessWidget {
   final RunnerInfo runner;
   final VoidCallback onToggleEnabled;
+  final String? defaultModel;
+  final ValueChanged<String?>? onDefaultModelChanged;
 
   const RunnerCard({
     super.key,
     required this.runner,
     required this.onToggleEnabled,
+    this.defaultModel,
+    this.onDefaultModelChanged,
   });
 
   @override
@@ -38,7 +42,11 @@ class RunnerCard extends StatelessWidget {
               const SizedBox(height: 12),
               const Divider(height: 1),
               const SizedBox(height: 8),
-              RunnerServerInfoSection(serverInfo: runner.serverInfo!),
+              RunnerServerInfoSection(
+                serverInfo: runner.serverInfo!,
+                defaultModel: defaultModel,
+                onDefaultModelChanged: onDefaultModelChanged,
+              ),
             ],
             if (hasGpus) ...[
               const SizedBox(height: 12),

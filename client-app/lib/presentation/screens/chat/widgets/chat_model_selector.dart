@@ -4,105 +4,66 @@ import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 
-class ChatModelSelector extends StatelessWidget {
-  const ChatModelSelector({super.key, required this.state});
+class ChatRunnerSelector extends StatelessWidget {
+  const ChatRunnerSelector({super.key, required this.state});
 
   final ChatState state;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final models = state.models;
-    final selected = state.selectedModel;
+    final runners = state.runners;
+    final selected = state.selectedRunner;
     final isEnabled = state.isConnected && !state.isLoading;
 
-    if (models.isEmpty) {
+    if (runners.isEmpty) {
       return Tooltip(
-        message: 'Модели не загружены',
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(6),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.smart_toy_outlined,
-                size: 14,
-                color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-              ),
-              const SizedBox(width: 5),
-              Text(
-                'Модель',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-                ),
-              ),
-            ],
-          ),
+        message: 'Раннеры не загружены',
+        child: Icon(
+          Icons.dns_outlined,
+          size: 20,
+          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
         ),
       );
     }
 
     return PopupMenuButton<String>(
       enabled: isEnabled,
-      tooltip: 'Выбор модели',
-      padding: EdgeInsets.zero,
+      tooltip: 'Выбор раннера',
+      initialValue: selected ?? runners.first,
+      padding: const EdgeInsets.all(4),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(
-            color: theme.colorScheme.outline.withValues(alpha: 0.2),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.smart_toy_outlined,
-              size: 14,
-              color: isEnabled
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
-            ),
-            const SizedBox(width: 5),
-            Text(
-              selected ?? models.first,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: isEnabled
-                    ? theme.colorScheme.onSurface
-                    : theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            const SizedBox(width: 2),
-            Icon(
-              Icons.keyboard_arrow_down_rounded,
-              color: theme.colorScheme.onSurfaceVariant,
-              size: 16,
-            ),
-          ],
-        ),
+      child: Icon(
+        Icons.dns_outlined,
+        size: 20,
+        color: isEnabled
+          ? theme.colorScheme.primary
+          : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.6),
       ),
       onOpened: () {
-        if (state.models.isEmpty) {
-          context.read<ChatBloc>().add(const ChatLoadModels());
+        if (state.runners.isEmpty) {
+          context.read<ChatBloc>().add(const ChatLoadRunners());
         }
       },
       itemBuilder: (context) => [
-        for (final model in models)
-          PopupMenuItem<String>(value: model, child: Text(model)),
+        for (final runner in runners)
+          PopupMenuItem<String>(
+            value: runner,
+            child: Row(
+              children: [
+                Expanded(child: Text(runner)),
+                if (runner == (selected ?? runners.first))
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: theme.colorScheme.primary,
+                  ),
+              ],
+            ),
+          ),
       ],
       onSelected: (value) {
-        context.read<ChatBloc>().add(ChatSelectModel(value));
+        context.read<ChatBloc>().add(ChatSelectRunner(value));
       },
     );
   }

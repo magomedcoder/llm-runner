@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 
@@ -13,9 +14,13 @@ class ChatState extends Equatable {
   final List<Message> messages;
   final String? currentStreamingText;
   final String? error;
-  final List<String> models;
-  final String? selectedModel;
+  final List<String> runners;
+  final String? selectedRunner;
   final bool? hasActiveRunners;
+  final ChatSessionSettings? sessionSettings;
+  final String? retryText;
+  final String? retryAttachmentFileName;
+  final List<int>? retryAttachmentContent;
 
   const ChatState({
     this.isConnected = false,
@@ -26,9 +31,13 @@ class ChatState extends Equatable {
     this.messages = const [],
     this.currentStreamingText,
     this.error,
-    this.models = const [],
-    this.selectedModel,
+    this.runners = const [],
+    this.selectedRunner,
     this.hasActiveRunners,
+    this.sessionSettings,
+    this.retryText,
+    this.retryAttachmentFileName,
+    this.retryAttachmentContent,
   });
 
   ChatState copyWith({
@@ -40,24 +49,37 @@ class ChatState extends Equatable {
     List<Message>? messages,
     String? currentStreamingText,
     String? error,
-    List<String>? models,
-    String? selectedModel,
+    List<String>? runners,
+    String? selectedRunner,
     bool? hasActiveRunners,
+    ChatSessionSettings? sessionSettings,
+    String? retryText,
+    String? retryAttachmentFileName,
+    List<int>? retryAttachmentContent,
+    bool clearRetryPayload = false,
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
       isLoading: isLoading ?? this.isLoading,
       isStreaming: isStreaming ?? this.isStreaming,
       currentSessionId: identical(currentSessionId, _kKeepCurrentSessionId)
-          ? this.currentSessionId
-          : currentSessionId as int?,
+        ? this.currentSessionId
+        : currentSessionId as int?,
       sessions: sessions ?? this.sessions,
       messages: messages ?? this.messages,
       currentStreamingText: currentStreamingText,
       error: error,
-      models: models ?? this.models,
-      selectedModel: selectedModel ?? this.selectedModel,
+      runners: runners ?? this.runners,
+      selectedRunner: selectedRunner ?? this.selectedRunner,
       hasActiveRunners: hasActiveRunners ?? this.hasActiveRunners,
+      sessionSettings: sessionSettings ?? this.sessionSettings,
+      retryText: clearRetryPayload ? null : (retryText ?? this.retryText),
+      retryAttachmentFileName: clearRetryPayload
+        ? null
+        : (retryAttachmentFileName ?? this.retryAttachmentFileName),
+      retryAttachmentContent: clearRetryPayload
+        ? null
+        : (retryAttachmentContent ?? this.retryAttachmentContent),
     );
   }
 
@@ -71,8 +93,12 @@ class ChatState extends Equatable {
     messages,
     currentStreamingText,
     error,
-    models,
-    selectedModel,
+    runners,
+    selectedRunner,
     hasActiveRunners,
+    sessionSettings,
+    retryText,
+    retryAttachmentFileName,
+    retryAttachmentContent,
   ];
 }

@@ -9,6 +9,7 @@ import 'package:gen/core/grpc_error_handler.dart';
 import 'package:gen/core/log/logs.dart';
 import 'package:gen/data/mappers/message_mapper.dart';
 import 'package:gen/data/mappers/session_mapper.dart';
+import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
@@ -25,8 +26,6 @@ Message? _lastUserMessage(List<Message> messages) {
 
 abstract class IChatRemoteDataSource {
   Future<bool> checkConnection();
-
-  Future<List<String>> getModels();
 
   Stream<String> sendChatMessage(
     int sessionId,
@@ -51,6 +50,25 @@ abstract class IChatRemoteDataSource {
   Future<ChatSession> updateSessionTitle(int sessionId, String title);
 
   Future<ChatSession> updateSessionModel(int sessionId, String model);
+  Future<ChatSessionSettings> getSessionSettings(int sessionId);
+  Future<ChatSessionSettings> updateSessionSettings({
+    required int sessionId,
+    required String systemPrompt,
+    required List<String> stopSequences,
+    required int timeoutSeconds,
+    double? temperature,
+    int? maxTokens,
+    int? topK,
+    double? topP,
+    required bool jsonMode,
+    required String jsonSchema,
+    required String toolsJson,
+    required String profile,
+  });
+  Future<String?> getSelectedRunner();
+  Future<void> setSelectedRunner(String? runner);
+  Future<String?> getDefaultRunnerModel(String runner);
+  Future<void> setDefaultRunnerModel(String runner, String? model);
 }
 
 class ChatRemoteDataSource implements IChatRemoteDataSource {
@@ -66,7 +84,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     Logs().d('ChatRemote: checkConnection');
     try {
       final response = await _client.checkConnection(common.Empty());
-      Logs().i('ChatRemote: checkConnection isConnected=${response.isConnected}');
+      Logs().i(
+        'ChatRemote: checkConnection isConnected=${response.isConnected}',
+      );
       return response.isConnected;
     } on GrpcError catch (e) {
       if (e.code == StatusCode.unavailable) {
@@ -77,25 +97,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     } catch (e) {
       Logs().e('ChatRemote: checkConnection', exception: e);
       return false;
-    }
-  }
-
-  @override
-  Future<List<String>> getModels() async {
-    Logs().d('ChatRemote: getModels');
-    try {
-      final response = await _client.getModels(common.Empty());
-      Logs().i('ChatRemote: getModels получено ${response.models.length}');
-      return response.models;
-    } on GrpcError catch (e) {
-      if (e.code == StatusCode.unavailable) {
-        throw NetworkFailure('Ошибка подключения gRPC');
-      }
-      Logs().e('ChatRemote: getModels', exception: e);
-      throw NetworkFailure('Ошибка получения списка моделей');
-    } catch (e) {
-      Logs().e('ChatRemote: getModels', exception: e);
-      throw ApiFailure('Ошибка получения списка моделей');
     }
   }
 
@@ -152,9 +153,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   Future<ChatSession> createSession(String title, {String? model}) async {
     Logs().d('ChatRemote: createSession title=$title');
     try {
-      final request = grpc.CreateSessionRequest(
-        title: title,
-      );
+      final request = grpc.CreateSessionRequest(title: title);
       if (model != null && model.isNotEmpty) {
         request.model = model;
       }
@@ -176,9 +175,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   @override
   Future<ChatSession> getSession(int sessionId) async {
     try {
-      final request = grpc.GetSessionRequest(
-        sessionId: Int64(sessionId),
-      );
+      final request = grpc.GetSessionRequest(sessionId: Int64(sessionId));
 
       final response = await _authGuard.execute(
         () => _client.getSession(request),
@@ -193,16 +190,10 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   }
 
   @override
-  Future<List<ChatSession>> getSessions(
-    int page,
-    int pageSize,
-  ) async {
+  Future<List<ChatSession>> getSessions(int page, int pageSize) async {
     Logs().d('ChatRemote: getSessions page=$page pageSize=$pageSize');
     try {
-      final request = grpc.GetSessionsRequest(
-        page: page,
-        pageSize: pageSize,
-      );
+      final request = grpc.GetSessionsRequest(page: page, pageSize: pageSize);
 
       final response = await _authGuard.execute(
         () => _client.getSessions(request),
@@ -246,9 +237,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   @override
   Future<void> deleteSession(int sessionId) async {
     try {
-      final request = grpc.DeleteSessionRequest(
-        sessionId: Int64(sessionId),
-      );
+      final request = grpc.DeleteSessionRequest(sessionId: Int64(sessionId));
 
       await _authGuard.execute(() => _client.deleteSession(request));
     } on GrpcError catch (e) {
@@ -263,7 +252,7 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     try {
       final request = grpc.UpdateSessionTitleRequest(
         sessionId: Int64(sessionId),
-        title: title
+        title: title,
       );
 
       final response = await _authGuard.execute(
@@ -292,9 +281,127 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
 
       return SessionMapper.fromProto(response);
     } on GrpcError catch (e) {
-      throwGrpcError(e, 'Ошибка gRPC при обновлении модели сессии: ${e.message}');
+      throwGrpcError(
+        e,
+        'Ошибка gRPC при обновлении модели сессии: ${e.message}',
+      );
     } catch (e) {
       throw ApiFailure('Ошибка обновления модели сессии: $e');
     }
+  }
+
+  @override
+  Future<String?> getSelectedRunner() async {
+    final response = await _authGuard.execute(
+      () => _client.getSelectedRunner(common.Empty()),
+    );
+    return response.runner.isEmpty ? null : response.runner;
+  }
+
+  @override
+  Future<void> setSelectedRunner(String? runner) async {
+    await _authGuard.execute(
+      () => _client.setSelectedRunner(
+        grpc.SetSelectedRunnerRequest(runner: runner ?? ''),
+      ),
+    );
+  }
+
+  @override
+  Future<String?> getDefaultRunnerModel(String runner) async {
+    final response = await _authGuard.execute(
+      () => _client.getDefaultRunnerModel(
+        grpc.GetDefaultRunnerModelRequest(runner: runner),
+      ),
+    );
+    return response.model.isEmpty ? null : response.model;
+  }
+
+  @override
+  Future<void> setDefaultRunnerModel(String runner, String? model) async {
+    await _authGuard.execute(
+      () => _client.setDefaultRunnerModel(
+        grpc.SetDefaultRunnerModelRequest(runner: runner, model: model ?? ''),
+      ),
+    );
+  }
+
+  @override
+  Future<ChatSessionSettings> getSessionSettings(int sessionId) async {
+    final response = await _authGuard.execute(
+      () => _client.getSessionSettings(
+        grpc.GetSessionSettingsRequest(sessionId: Int64(sessionId)),
+      ),
+    );
+    return ChatSessionSettings(
+      sessionId: response.sessionId.toInt(),
+      systemPrompt: response.systemPrompt,
+      stopSequences: List<String>.from(response.stopSequences),
+      timeoutSeconds: response.timeoutSeconds,
+      temperature: response.hasTemperature() ? response.temperature : null,
+      maxTokens: response.hasMaxTokens() ? response.maxTokens : null,
+      topK: response.hasTopK() ? response.topK : null,
+      topP: response.hasTopP() ? response.topP : null,
+      jsonMode: response.jsonMode,
+      jsonSchema: response.jsonSchema,
+      toolsJson: response.toolsJson,
+      profile: response.profile,
+    );
+  }
+
+  @override
+  Future<ChatSessionSettings> updateSessionSettings({
+    required int sessionId,
+    required String systemPrompt,
+    required List<String> stopSequences,
+    required int timeoutSeconds,
+    double? temperature,
+    int? maxTokens,
+    int? topK,
+    double? topP,
+    required bool jsonMode,
+    required String jsonSchema,
+    required String toolsJson,
+    required String profile,
+  }) async {
+    final request = grpc.UpdateSessionSettingsRequest(
+      sessionId: Int64(sessionId),
+      systemPrompt: systemPrompt,
+      stopSequences: stopSequences,
+      timeoutSeconds: timeoutSeconds,
+      jsonMode: jsonMode,
+      jsonSchema: jsonSchema,
+      toolsJson: toolsJson,
+      profile: profile,
+    );
+    if (temperature != null) {
+      request.temperature = temperature;
+    }
+    if (maxTokens != null) {
+      request.maxTokens = maxTokens;
+    }
+    if (topK != null) {
+      request.topK = topK;
+    }
+    if (topP != null) {
+      request.topP = topP;
+    }
+    final response = await _authGuard.execute(
+      () => _client.updateSessionSettings(request),
+    );
+    return ChatSessionSettings(
+      sessionId: response.sessionId.toInt(),
+      systemPrompt: response.systemPrompt,
+      stopSequences: List<String>.from(response.stopSequences),
+      timeoutSeconds: response.timeoutSeconds,
+      temperature: response.hasTemperature() ? response.temperature : null,
+      maxTokens: response.hasMaxTokens() ? response.maxTokens : null,
+      topK: response.hasTopK() ? response.topK : null,
+      topP: response.hasTopP() ? response.topP : null,
+      jsonMode: response.jsonMode,
+      jsonSchema: response.jsonSchema,
+      toolsJson: response.toolsJson,
+      profile: response.profile,
+    );
   }
 }

@@ -2,13 +2,16 @@ package handler
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
+	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/mappers"
 	"github.com/magomedcoder/gen/internal/usecase"
+	"github.com/magomedcoder/gen/pkg/document"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -68,6 +71,12 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	responseChan, messageId, err := c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), req.GetModel(), userMessage, attachmentName, attachmentContent)
 	if err != nil {
 		logger.E("SendMessage: %v", err)
+		if errors.Is(err, document.ErrUnsupportedAttachmentType) || errors.Is(err, document.ErrInvalidTextEncoding) {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
+		if strings.Contains(err.Error(), "вложение") || strings.Contains(err.Error(), "размер вложения") {
+			return status.Error(codes.InvalidArgument, err.Error())
+		}
 		return ToStatusError(codes.Internal, err)
 	}
 	logger.V("SendMessage: стрим ответа запущен messageId=%d", messageId)
@@ -225,16 +234,111 @@ func (c *ChatHandler) UpdateSessionModel(ctx context.Context, req *chatpb.Update
 	return mappers.SessionToProto(session), nil
 }
 
+func mapSessionSettings(s *domain.ChatSessionSettings) *chatpb.SessionSettings {
+	if s == nil {
+		return &chatpb.SessionSettings{}
+	}
+	return &chatpb.SessionSettings{
+		SessionId:      s.SessionID,
+		SystemPrompt:   s.SystemPrompt,
+		StopSequences:  s.StopSequences,
+		TimeoutSeconds: s.TimeoutSeconds,
+		Temperature:    s.Temperature,
+		MaxTokens:      s.MaxTokens,
+		TopK:           s.TopK,
+		TopP:           s.TopP,
+		JsonMode:       s.JSONMode,
+		JsonSchema:     s.JSONSchema,
+		ToolsJson:      s.ToolsJSON,
+		Profile:        s.Profile,
+	}
+}
+
+func (c *ChatHandler) GetSessionSettings(ctx context.Context, req *chatpb.GetSessionSettingsRequest) (*chatpb.SessionSettings, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s, err := c.chatUseCase.GetSessionSettings(ctx, userID, req.GetSessionId())
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return mapSessionSettings(s), nil
+}
+
+func (c *ChatHandler) UpdateSessionSettings(ctx context.Context, req *chatpb.UpdateSessionSettingsRequest) (*chatpb.SessionSettings, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	s, err := c.chatUseCase.UpdateSessionSettings(
+		ctx,
+		userID,
+		req.GetSessionId(),
+		req.GetSystemPrompt(),
+		req.GetStopSequences(),
+		req.GetTimeoutSeconds(),
+		req.Temperature,
+		req.MaxTokens,
+		req.TopK,
+		req.TopP,
+		req.GetJsonMode(),
+		req.GetJsonSchema(),
+		req.GetToolsJson(),
+		req.GetProfile(),
+	)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return mapSessionSettings(s), nil
+}
+
 func (c *ChatHandler) CheckConnection(ctx context.Context, req *commonpb.Empty) (*chatpb.ConnectionResponse, error) {
 	return &chatpb.ConnectionResponse{IsConnected: true}, nil
 }
 
-func (c *ChatHandler) GetModels(ctx context.Context, req *commonpb.Empty) (*chatpb.GetModelsResponse, error) {
-	models, err := c.chatUseCase.GetModels(ctx)
+func (c *ChatHandler) GetSelectedRunner(ctx context.Context, req *commonpb.Empty) (*chatpb.SelectedRunnerResponse, error) {
+	userID, err := c.getUserID(ctx)
 	if err != nil {
-		logger.E("GetModels: %v", err)
+		return nil, err
+	}
+	runner, err := c.chatUseCase.GetSelectedRunner(ctx, userID)
+	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)
 	}
+	return &chatpb.SelectedRunnerResponse{Runner: runner}, nil
+}
 
-	return &chatpb.GetModelsResponse{Models: models}, nil
+func (c *ChatHandler) SetSelectedRunner(ctx context.Context, req *chatpb.SetSelectedRunnerRequest) (*commonpb.Empty, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.chatUseCase.SetSelectedRunner(ctx, userID, req.GetRunner()); err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return &commonpb.Empty{}, nil
+}
+
+func (c *ChatHandler) GetDefaultRunnerModel(ctx context.Context, req *chatpb.GetDefaultRunnerModelRequest) (*chatpb.DefaultRunnerModelResponse, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	model, err := c.chatUseCase.GetDefaultRunnerModel(ctx, userID, req.GetRunner())
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return &chatpb.DefaultRunnerModelResponse{Model: model}, nil
+}
+
+func (c *ChatHandler) SetDefaultRunnerModel(ctx context.Context, req *chatpb.SetDefaultRunnerModelRequest) (*commonpb.Empty, error) {
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := c.chatUseCase.SetDefaultRunnerModel(ctx, userID, req.GetRunner(), req.GetModel()); err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+	return &commonpb.Empty{}, nil
 }

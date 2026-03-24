@@ -7,18 +7,18 @@ import (
 	"github.com/magomedcoder/gen/internal/domain"
 )
 
-type tokenRepository struct {
+type userSessionRepository struct {
 	db *pgxpool.Pool
 }
 
-func NewTokenRepository(db *pgxpool.Pool) domain.TokenRepository {
-	return &tokenRepository{db: db}
+func NewUserSessionRepository(db *pgxpool.Pool) domain.TokenRepository {
+	return &userSessionRepository{db: db}
 }
 
-func (u *tokenRepository) Create(ctx context.Context, token *domain.Token) error {
+func (u *userSessionRepository) Create(ctx context.Context, token *domain.Token) error {
 	err := u.db.QueryRow(ctx,
 		`
-		INSERT INTO tokens (user_id, token, type, expires_at, created_at)
+		INSERT INTO user_sessions (user_id, token, type, expires_at, created_at)
 		VALUES ($1, $2, $3, $4, $5)
 		RETURNING id
 	`,
@@ -32,12 +32,12 @@ func (u *tokenRepository) Create(ctx context.Context, token *domain.Token) error
 	return err
 }
 
-func (u *tokenRepository) GetByToken(ctx context.Context, token string) (*domain.Token, error) {
+func (u *userSessionRepository) GetByToken(ctx context.Context, token string) (*domain.Token, error) {
 	var t domain.Token
 	err := u.db.QueryRow(ctx,
 		`
 		SELECT id, user_id, token, type, expires_at, created_at, deleted_at
-		FROM tokens
+		FROM user_sessions
 		WHERE token = $1 AND deleted_at IS NULL
 	`, token).Scan(
 		&t.Id,
@@ -56,12 +56,12 @@ func (u *tokenRepository) GetByToken(ctx context.Context, token string) (*domain
 	return &t, nil
 }
 
-func (u *tokenRepository) DeleteByToken(ctx context.Context, token string) error {
-	_, err := u.db.Exec(ctx, `UPDATE tokens SET deleted_at = NOW() WHERE token = $1 AND deleted_at IS NULL`, token)
+func (u *userSessionRepository) DeleteByToken(ctx context.Context, token string) error {
+	_, err := u.db.Exec(ctx, `UPDATE user_sessions SET deleted_at = NOW() WHERE token = $1 AND deleted_at IS NULL`, token)
 	return err
 }
 
-func (u *tokenRepository) DeleteByUserId(ctx context.Context, userID int, tokenType domain.TokenType) error {
-	_, err := u.db.Exec(ctx, `UPDATE tokens SET deleted_at = NOW() WHERE user_id = $1 AND type = $2 AND deleted_at IS NULL`, userID, tokenType)
+func (u *userSessionRepository) DeleteByUserId(ctx context.Context, userID int, tokenType domain.TokenType) error {
+	_, err := u.db.Exec(ctx, `UPDATE user_sessions SET deleted_at = NOW() WHERE user_id = $1 AND type = $2 AND deleted_at IS NULL`, userID, tokenType)
 	return err
 }

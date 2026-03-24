@@ -2,11 +2,13 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/pkg/document"
@@ -14,27 +16,49 @@ import (
 )
 
 type ChatUseCase struct {
-	sessionRepo        domain.ChatSessionRepository
-	messageRepo        domain.MessageRepository
-	fileRepo           domain.FileRepository
-	llmRepo            domain.LLMRepository
-	attachmentsSaveDir string
+	sessionRepo         domain.ChatSessionRepository
+	preferenceRepo      domain.ChatPreferenceRepository
+	sessionSettingsRepo domain.ChatSessionSettingsRepository
+	messageRepo         domain.MessageRepository
+	fileRepo            domain.FileRepository
+	llmRepo             domain.LLMRepository
+	attachmentsSaveDir  string
 }
 
 func NewChatUseCase(
 	sessionRepo domain.ChatSessionRepository,
+	preferenceRepo domain.ChatPreferenceRepository,
+	sessionSettingsRepo domain.ChatSessionSettingsRepository,
 	messageRepo domain.MessageRepository,
 	fileRepo domain.FileRepository,
 	llmRepo domain.LLMRepository,
 	attachmentsSaveDir string,
 ) *ChatUseCase {
 	return &ChatUseCase{
-		sessionRepo:        sessionRepo,
-		messageRepo:        messageRepo,
-		fileRepo:           fileRepo,
-		llmRepo:            llmRepo,
-		attachmentsSaveDir: attachmentsSaveDir,
+		sessionRepo:         sessionRepo,
+		preferenceRepo:      preferenceRepo,
+		sessionSettingsRepo: sessionSettingsRepo,
+		messageRepo:         messageRepo,
+		fileRepo:            fileRepo,
+		llmRepo:             llmRepo,
+		attachmentsSaveDir:  attachmentsSaveDir,
 	}
+}
+
+func (c *ChatUseCase) GetSelectedRunner(ctx context.Context, userID int) (string, error) {
+	return c.preferenceRepo.GetSelectedRunner(ctx, userID)
+}
+
+func (c *ChatUseCase) SetSelectedRunner(ctx context.Context, userID int, runner string) error {
+	return c.preferenceRepo.SetSelectedRunner(ctx, userID, runner)
+}
+
+func (c *ChatUseCase) GetDefaultRunnerModel(ctx context.Context, userID int, runner string) (string, error) {
+	return c.preferenceRepo.GetDefaultRunnerModel(ctx, userID, runner)
+}
+
+func (c *ChatUseCase) SetDefaultRunnerModel(ctx context.Context, userID int, runner string, model string) error {
+	return c.preferenceRepo.SetDefaultRunnerModel(ctx, userID, runner, model)
 }
 
 func (c *ChatUseCase) verifySessionOwnership(ctx context.Context, userId int, sessionID int64) (*domain.ChatSession, error) {
@@ -69,6 +93,20 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	}
 	messages := filterHistoryForLLM(rawMessages)
 
+	if len(attachmentContent) > 0 || attachmentName != "" {
+		if len(attachmentContent) == 0 || strings.TrimSpace(attachmentName) == "" {
+			return nil, 0, fmt.Errorf("вложение передано некорректно")
+		}
+
+		if len(attachmentContent) > document.MaxRecommendedAttachmentSizeBytes {
+			return nil, 0, fmt.Errorf("размер вложения превышает рекомендуемый максимум: %d байт", document.MaxRecommendedAttachmentSizeBytes)
+		}
+
+		if err := document.ValidateAttachment(attachmentName, attachmentContent); err != nil {
+			return nil, 0, err
+		}
+	}
+
 	var attachmentFileID *int64
 	if len(attachmentContent) > 0 && attachmentName != "" && c.attachmentsSaveDir != "" {
 		file, err := c.saveAttachmentAndCreateFile(ctx, sessionId, attachmentName, attachmentContent)
@@ -86,7 +124,11 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 		return nil, 0, err
 	}
 
-	messagesForLLM := make([]*domain.Message, 0, len(messages)+1)
+	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
+	messagesForLLM := make([]*domain.Message, 0, len(messages)+2)
+	if settings != nil && strings.TrimSpace(settings.SystemPrompt) != "" {
+		messagesForLLM = append(messagesForLLM, domain.NewMessage(sessionId, settings.SystemPrompt, domain.MessageRoleSystem))
+	}
 	messagesForLLM = append(messagesForLLM, messages...)
 	if len(attachmentContent) > 0 && attachmentName != "" {
 		fullContent := buildMessageWithFile(attachmentName, attachmentContent, userMessage)
@@ -104,7 +146,34 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	}
 	messageID := assistantMsg.Id
 
-	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, model, messagesForLLM)
+	var stopSequences []string
+	var timeoutSeconds int32
+	var genParams *domain.GenerationParams
+	if settings != nil {
+		stopSequences = settings.StopSequences
+		timeoutSeconds = settings.TimeoutSeconds
+		genParams = &domain.GenerationParams{
+			Temperature: settings.Temperature,
+			MaxTokens:   settings.MaxTokens,
+			TopK:        settings.TopK,
+			TopP:        settings.TopP,
+		}
+		if settings.JSONMode {
+			jsonSchema := strings.TrimSpace(settings.JSONSchema)
+			var schemaPtr *string
+			if jsonSchema != "" {
+				schemaPtr = &jsonSchema
+			}
+			genParams.ResponseFormat = &domain.ResponseFormat{
+				Type:   "json_object",
+				Schema: schemaPtr,
+			}
+		}
+		if parsedTools := parseToolsJSON(settings.ToolsJSON); len(parsedTools) > 0 {
+			genParams.Tools = parsedTools
+		}
+	}
+	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, model, messagesForLLM, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
 		logger.E("SendMessage: вызов LLM: %v", err)
 		return nil, 0, err
@@ -132,7 +201,71 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	return clientChan, messageID, nil
 }
 
+func (c *ChatUseCase) GetSessionSettings(ctx context.Context, userId int, sessionID int64) (*domain.ChatSessionSettings, error) {
+	_, err := c.verifySessionOwnership(ctx, userId, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	return c.sessionSettingsRepo.GetBySessionID(ctx, sessionID)
+}
+
+func (c *ChatUseCase) UpdateSessionSettings(
+	ctx context.Context,
+	userId int,
+	sessionID int64,
+	systemPrompt string,
+	stopSequences []string,
+	timeoutSeconds int32,
+	temperature *float32,
+	maxTokens *int32,
+	topK *int32,
+	topP *float32,
+	jsonMode bool,
+	jsonSchema string,
+	toolsJSON string,
+	profile string,
+) (*domain.ChatSessionSettings, error) {
+	_, err := c.verifySessionOwnership(ctx, userId, sessionID)
+	if err != nil {
+		return nil, err
+	}
+	settings := &domain.ChatSessionSettings{
+		SessionID:      sessionID,
+		SystemPrompt:   strings.TrimSpace(systemPrompt),
+		StopSequences:  stopSequences,
+		TimeoutSeconds: timeoutSeconds,
+		Temperature:    temperature,
+		MaxTokens:      maxTokens,
+		TopK:           topK,
+		TopP:           topP,
+		JSONMode:       jsonMode,
+		JSONSchema:     strings.TrimSpace(jsonSchema),
+		ToolsJSON:      strings.TrimSpace(toolsJSON),
+		Profile:        strings.TrimSpace(profile),
+	}
+	if err := c.sessionSettingsRepo.Upsert(ctx, settings); err != nil {
+		return nil, err
+	}
+	return settings, nil
+}
+
+func parseToolsJSON(raw string) []domain.Tool {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+	var tools []domain.Tool
+	if err := json.Unmarshal([]byte(trimmed), &tools); err != nil {
+		return nil
+	}
+	return tools
+}
+
 func (c *ChatUseCase) CreateSession(ctx context.Context, userId int, title string, model string) (*domain.ChatSession, error) {
+	if strings.TrimSpace(title) == "" {
+		title = "Чат от " + time.Now().Format("15:04:05 02.01.2006")
+	}
+
 	session := domain.NewChatSession(userId, title, model)
 	if err := c.sessionRepo.Create(ctx, session); err != nil {
 		return nil, err

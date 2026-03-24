@@ -10,6 +10,51 @@ import (
 	"strings"
 )
 
+func mapResponseFormatToProto(in *domain.ResponseFormat) *llmrunnerpb.ResponseFormat {
+	if in == nil {
+		return nil
+	}
+	out := &llmrunnerpb.ResponseFormat{
+		Type: in.Type,
+	}
+	if in.Schema != nil {
+		out.Schema = in.Schema
+	}
+	return out
+}
+
+func mapGenerationParamsToProto(in *domain.GenerationParams) *llmrunnerpb.GenerationParams {
+	if in == nil {
+		return nil
+	}
+	out := &llmrunnerpb.GenerationParams{
+		ResponseFormat: mapResponseFormatToProto(in.ResponseFormat),
+	}
+	if in.Temperature != nil {
+		out.Temperature = in.Temperature
+	}
+	if in.MaxTokens != nil {
+		out.MaxTokens = in.MaxTokens
+	}
+	if in.TopK != nil {
+		out.TopK = in.TopK
+	}
+	if in.TopP != nil {
+		out.TopP = in.TopP
+	}
+	if len(in.Tools) > 0 {
+		out.Tools = make([]*llmrunnerpb.Tool, 0, len(in.Tools))
+		for _, t := range in.Tools {
+			out.Tools = append(out.Tools, &llmrunnerpb.Tool{
+				Name:           t.Name,
+				Description:    t.Description,
+				ParametersJson: t.ParametersJSON,
+			})
+		}
+	}
+	return out
+}
+
 type LLMRunnerService struct {
 	client llmrunnerpb.LLMRunnerServiceClient
 	conn   *grpc.ClientConn
@@ -74,7 +119,15 @@ func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.Serv
 	return resp, nil
 }
 
-func (s *LLMRunnerService) SendMessage(ctx context.Context, sessionID int64, model string, messages []*domain.Message) (chan string, error) {
+func (s *LLMRunnerService) SendMessage(
+	ctx context.Context,
+	sessionID int64,
+	model string,
+	messages []*domain.Message,
+	stopSequences []string,
+	timeoutSeconds int32,
+	genParams *domain.GenerationParams,
+) (chan string, error) {
 	modelName := strings.TrimSpace(model)
 	if modelName == "" || modelName == "default" {
 		modelName = strings.TrimSpace(s.model)
@@ -83,9 +136,14 @@ func (s *LLMRunnerService) SendMessage(ctx context.Context, sessionID int64, mod
 		modelName = ""
 	}
 	req := &llmrunnerpb.SendMessageRequest{
-		SessionId: sessionID,
-		Messages:  domainMessagesToProto(messages),
-		Model:     modelName,
+		SessionId:        sessionID,
+		Messages:         domainMessagesToProto(messages),
+		Model:            modelName,
+		StopSequences:    stopSequences,
+		GenerationParams: mapGenerationParamsToProto(genParams),
+	}
+	if timeoutSeconds > 0 {
+		req.TimeoutSeconds = &timeoutSeconds
 	}
 
 	stream, err := s.client.SendMessage(ctx, req)

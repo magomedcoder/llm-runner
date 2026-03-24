@@ -49,6 +49,7 @@ message RunnerInfo {
   bool connected = 3;
   repeated GpuInfo gpus = 4;
   ServerInfo server_info = 5;
+  string name = 6;
 }
 
 message GetRunnersResponse {

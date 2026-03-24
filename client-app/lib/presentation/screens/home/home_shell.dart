@@ -10,6 +10,7 @@ import 'package:gen/presentation/screens/chat/chat_screen.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_bloc.dart';
 import 'package:gen/presentation/screens/editor/bloc/editor_event.dart';
 import 'package:gen/presentation/screens/editor/editor_screen.dart';
+import 'package:gen/presentation/screens/profile/profile_screen.dart';
 import 'package:gen/presentation/widgets/app_side_navigation_rail.dart';
 
 class HomeShell extends StatefulWidget {
@@ -38,6 +39,12 @@ class _HomeShellState extends State<HomeShell> {
       icon: Icons.edit_note_outlined,
       selectedIcon: Icons.edit_note_rounded,
       label: 'Редактор',
+    ),
+    AppSideNavDestination(
+      icon: Icons.person_outline,
+      selectedIcon: Icons.person,
+      label: 'Профиль',
+      alignBottom: true,
     ),
   ];
 
@@ -70,11 +77,10 @@ class _HomeShellState extends State<HomeShell> {
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<AuthBloc, AuthState>(
-      listenWhen: (prev, curr) =>
-          (prev.user?.isAdmin ?? false) != (curr.user?.isAdmin ?? false),
+      listenWhen: (prev, curr) => (prev.user?.isAdmin ?? false) != (curr.user?.isAdmin ?? false),
       listener: (context, state) {
         final isAdmin = state.user?.isAdmin ?? false;
-        if (!isAdmin && _index > 1) {
+        if (!isAdmin && _index > 2) {
           setState(() => _index = 0);
         }
       },
@@ -85,6 +91,7 @@ class _HomeShellState extends State<HomeShell> {
         final pages = <Widget>[
           const ChatScreen(),
           _editorPage,
+          const ProfileScreen(),
           if (isAdmin) const UsersAdminScreen() else const SizedBox.shrink(),
           if (isAdmin) const RunnersAdminScreen() else const SizedBox.shrink(),
         ];
@@ -98,7 +105,10 @@ class _HomeShellState extends State<HomeShell> {
               selectedIndex: _index,
               onDestinationSelected: select,
               destinations: _mobileDestinations(
-                isAdmin ? [..._userNav, ..._adminNavExtra] : _userNav,
+                isAdmin ? [
+                  ..._userNav,
+                  ..._adminNavExtra
+                ] : _userNav,
               ),
             ),
           );
@@ -111,7 +121,11 @@ class _HomeShellState extends State<HomeShell> {
                 selectedIndex: _index,
                 onDestinationSelected: select,
                 indicatorSize: _sideNavIndicatorSize,
-                destinations: [..._userNav, if (isAdmin) ..._adminNavExtra],
+                destinations: [
+                  ..._userNav,
+                  if (isAdmin)
+                    ..._adminNavExtra
+                ],
               ),
               const VerticalDivider(width: 1, thickness: 1),
               Expanded(

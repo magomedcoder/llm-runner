@@ -6,8 +6,7 @@ class EditorState extends Equatable {
   final String documentText;
   final List<String> undoStack;
   final List<String> redoStack;
-  final List<String> models;
-  final String? selectedModel;
+  final String? selectedRunner;
   final grpc.TransformType type;
   final bool preserveMarkdown;
   final String? error;
@@ -18,8 +17,7 @@ class EditorState extends Equatable {
     this.documentText = '',
     this.undoStack = const [],
     this.redoStack = const [],
-    this.models = const [],
-    this.selectedModel,
+    this.selectedRunner,
     this.type = grpc.TransformType.TRANSFORM_TYPE_FIX,
     this.preserveMarkdown = false,
     this.error,
@@ -35,9 +33,8 @@ class EditorState extends Equatable {
     String? documentText,
     List<String>? undoStack,
     List<String>? redoStack,
-    List<String>? models,
-    String? selectedModel,
-    bool clearSelectedModel = false,
+    String? selectedRunner,
+    bool clearSelectedRunner = false,
     grpc.TransformType? type,
     bool? preserveMarkdown,
     String? error,
@@ -49,10 +46,9 @@ class EditorState extends Equatable {
       documentText: documentText ?? this.documentText,
       undoStack: undoStack ?? this.undoStack,
       redoStack: redoStack ?? this.redoStack,
-      models: models ?? this.models,
-      selectedModel: clearSelectedModel
-          ? null
-          : (selectedModel ?? this.selectedModel),
+      selectedRunner: clearSelectedRunner
+        ? null
+        : (selectedRunner ?? this.selectedRunner),
       type: type ?? this.type,
       preserveMarkdown: preserveMarkdown ?? this.preserveMarkdown,
       error: clearError ? null : (error ?? this.error),
@@ -62,15 +58,14 @@ class EditorState extends Equatable {
 
   @override
   List<Object?> get props => [
-        isLoading,
-        documentText,
-        undoStack,
-        redoStack,
-        models,
-        selectedModel,
-        type,
-        preserveMarkdown,
-        error,
-        documentVersion,
-      ];
+    isLoading,
+    documentText,
+    undoStack,
+    redoStack,
+    selectedRunner,
+    type,
+    preserveMarkdown,
+    error,
+    documentVersion,
+  ];
 }

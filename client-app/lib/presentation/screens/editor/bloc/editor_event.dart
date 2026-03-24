@@ -45,15 +45,6 @@ final class EditorTypeChanged extends EditorEvent {
   List<Object?> get props => [type];
 }
 
-final class EditorModelChanged extends EditorEvent {
-  final String? model;
-
-  const EditorModelChanged(this.model);
-
-  @override
-  List<Object?> get props => [model];
-}
-
 final class EditorPreserveMarkdownChanged extends EditorEvent {
   final bool preserve;
 

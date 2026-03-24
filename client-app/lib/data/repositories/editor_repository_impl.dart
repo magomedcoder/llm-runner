@@ -25,12 +25,19 @@ class EditorRepositoryImpl implements EditorRepository {
       );
     } catch (e) {
       if (e is Failure) rethrow;
-      Logs().e('EditorRepository: неожиданная ошибка transform',
-          exception: e);
+      Logs().e('EditorRepository: неожиданная ошибка transform', exception: e);
       throw ApiFailure('Ошибка обработки текста');
     }
   }
 
   @override
   Future<void> cancelTransform() => dataSource.cancelTransform();
+
+  @override
+  Future<void> saveHistory({
+    required String text,
+    String? runner,
+  }) async {
+    await dataSource.saveHistory(text: text, runner: runner);
+  }
 }
