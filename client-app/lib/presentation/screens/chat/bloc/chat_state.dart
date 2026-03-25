@@ -18,6 +18,7 @@ class ChatState extends Equatable {
   final Map<String, String> runnerNames;
   final String? selectedRunner;
   final bool? hasActiveRunners;
+  final bool runnersStatusRefreshing;
   final ChatSessionSettings? sessionSettings;
   final String? retryText;
   final String? retryAttachmentFileName;
@@ -36,6 +37,7 @@ class ChatState extends Equatable {
     this.runnerNames = const {},
     this.selectedRunner,
     this.hasActiveRunners,
+    this.runnersStatusRefreshing = false,
     this.sessionSettings,
     this.retryText,
     this.retryAttachmentFileName,
@@ -55,6 +57,7 @@ class ChatState extends Equatable {
     Map<String, String>? runnerNames,
     String? selectedRunner,
     bool? hasActiveRunners,
+    bool? runnersStatusRefreshing,
     ChatSessionSettings? sessionSettings,
     String? retryText,
     String? retryAttachmentFileName,
@@ -76,6 +79,7 @@ class ChatState extends Equatable {
       runnerNames: runnerNames ?? this.runnerNames,
       selectedRunner: selectedRunner ?? this.selectedRunner,
       hasActiveRunners: hasActiveRunners ?? this.hasActiveRunners,
+      runnersStatusRefreshing: runnersStatusRefreshing ?? this.runnersStatusRefreshing,
       sessionSettings: sessionSettings ?? this.sessionSettings,
       retryText: clearRetryPayload ? null : (retryText ?? this.retryText),
       retryAttachmentFileName: clearRetryPayload
@@ -101,6 +105,7 @@ class ChatState extends Equatable {
     runnerNames,
     selectedRunner,
     hasActiveRunners,
+    runnersStatusRefreshing,
     sessionSettings,
     retryText,
     retryAttachmentFileName,

@@ -3,11 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
-	"strings"
 )
 
 func mapResponseFormatToProto(in *domain.ResponseFormat) *llmrunnerpb.ResponseFormat {
@@ -32,9 +33,6 @@ func mapGenerationParamsToProto(in *domain.GenerationParams) *llmrunnerpb.Genera
 	}
 	if in.Temperature != nil {
 		out.Temperature = in.Temperature
-	}
-	if in.MaxTokens != nil {
-		out.MaxTokens = in.MaxTokens
 	}
 	if in.TopK != nil {
 		out.TopK = in.TopK
@@ -117,6 +115,33 @@ func (s *LLMRunnerService) GetServerInfo(ctx context.Context) (*llmrunnerpb.Serv
 	}
 
 	return resp, nil
+}
+
+func (s *LLMRunnerService) GetLoadedModel(ctx context.Context) (*llmrunnerpb.GetLoadedModelResponse, error) {
+	resp, err := s.client.GetLoadedModel(ctx, &llmrunnerpb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner GetLoadedModel: %w", err)
+	}
+
+	return resp, nil
+}
+
+func (s *LLMRunnerService) UnloadModel(ctx context.Context) error {
+	_, err := s.client.UnloadModel(ctx, &llmrunnerpb.Empty{})
+	if err != nil {
+		return fmt.Errorf("llm-runner UnloadModel: %w", err)
+	}
+
+	return nil
+}
+
+func (s *LLMRunnerService) SendMessageStream(ctx context.Context, req *llmrunnerpb.SendMessageRequest) (llmrunnerpb.LLMRunnerService_SendMessageClient, error) {
+	stream, err := s.client.SendMessage(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("llm-runner SendMessage: %w", err)
+	}
+
+	return stream, nil
 }
 
 func (s *LLMRunnerService) resolveRunnerModel(model string) string {
@@ -202,7 +227,7 @@ func (s *LLMRunnerService) SendMessage(
 
 	firstMsg, err := stream.Recv()
 	if err != nil {
-		return nil, fmt.Errorf("llm-runner stream recv: %w", err)
+		return nil, fmt.Errorf("llm-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
 	}
 
 	output := make(chan string, 100)
@@ -260,6 +285,13 @@ func domainMessagesToProto(messages []*domain.Message) []*llmrunnerpb.ChatMessag
 		if strings.TrimSpace(m.ToolCallsJSON) != "" {
 			v := m.ToolCallsJSON
 			cm.ToolCallsJson = &v
+		}
+
+		if n := strings.TrimSpace(m.AttachmentName); n != "" {
+			cm.AttachmentName = &n
+		}
+		if len(m.AttachmentContent) > 0 {
+			cm.AttachmentContent = m.AttachmentContent
 		}
 
 		out = append(out, cm)

@@ -36,7 +36,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Default.SetLevel(logger.ParseLevel(cfg.Log.Level))
+	logger.Default.SetLevel(logger.ParseLevel(cfg.LogLevel))
 	logger.I("Запуск приложения (%s)", config.LoadedFrom)
 
 	ctx := context.Background()
@@ -104,8 +104,8 @@ func main() {
 	defer runnerPool.Close()
 	llmRepo := runnerPool
 
-	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, fileRepo, llmRepo, cfg.Attachments.SaveDir)
-	editorUseCase := usecase.NewEditorUseCase(llmRepo, chatPreferenceRepo, editorHistoryRepo)
+	chatUseCase := usecase.NewChatUseCase(sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, fileRepo, llmRepo, cfg.UploadDir, cfg.DefaultRunnerAddress())
+	editorUseCase := usecase.NewEditorUseCase(llmRepo, chatPreferenceRepo, editorHistoryRepo, cfg.DefaultRunnerAddress())
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	authHandler := handler.NewAuthHandler(cfg, authUseCase)

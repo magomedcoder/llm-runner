@@ -43,6 +43,12 @@ message ServerInfo {
   repeated string models = 6;
 }
 
+message LoadedModelStatus {
+  bool loaded = 1;
+  string display_name = 2;
+  string gguf_basename = 3;
+}
+
 message RunnerInfo {
   string address = 1;
   bool enabled = 2;
@@ -50,6 +56,7 @@ message RunnerInfo {
   repeated GpuInfo gpus = 4;
   ServerInfo server_info = 5;
   string name = 6;
+  LoadedModelStatus loaded_model = 7;
 }
 
 message GetRunnersResponse {

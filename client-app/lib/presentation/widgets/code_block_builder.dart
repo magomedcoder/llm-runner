@@ -236,16 +236,11 @@ class _SelectableCodeBlockState extends State<_SelectableCodeBlock> {
                       ),
                     ),
                     const Spacer(),
-                    Icon(
-                      _copied ? Icons.check_rounded : Icons.copy_rounded,
-                      size: 18,
-                      color: _copied ? copiedColor : iconColor,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      _copied ? 'Скопировано' : 'Копировать',
-                      style: TextStyle(
-                        fontSize: 12,
+                    Tooltip(
+                      message: _copied ? 'Скопировано' : 'Копировать',
+                      child: Icon(
+                        _copied ? Icons.check_rounded : Icons.copy_rounded,
+                        size: 18,
                         color: _copied ? copiedColor : iconColor,
                       ),
                     ),

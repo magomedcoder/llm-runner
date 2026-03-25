@@ -111,3 +111,16 @@ func (r *Registry) GetEnabledAddresses() []string {
 	}
 	return out
 }
+
+func (r *Registry) IsEnabledRunner(addr string) bool {
+	a := strings.TrimSpace(addr)
+	if a == "" {
+		return false
+	}
+
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	st, ok := r.runners[a]
+
+	return ok && st.Enabled
+}

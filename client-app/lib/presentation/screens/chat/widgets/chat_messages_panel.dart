@@ -1,5 +1,8 @@
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
+import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_drop_overlay.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_empty_state.dart';
@@ -45,7 +48,10 @@ class ChatMessagesPanel extends StatelessWidget {
           Column(
             children: [
               if (state.hasActiveRunners == false)
-                const ChatRunnersInactiveBanner(),
+                ChatRunnersInactiveBanner(
+                  isRefreshing: state.runnersStatusRefreshing,
+                  onRefresh: () => context.read<ChatBloc>().add(const ChatLoadRunners()),
+                ),
               Expanded(
                 child: state.messages.isEmpty
                   ? const ChatEmptyState()

@@ -89,7 +89,6 @@ type Tool struct {
 
 type GenerationParams struct {
 	Temperature    *float32
-	MaxTokens      *int32
 	TopK           *int32
 	TopP           *float32
 	ResponseFormat *ResponseFormat

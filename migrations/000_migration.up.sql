@@ -91,7 +91,6 @@ CREATE TABLE IF NOT EXISTS chat_session_settings
     stop_sequences   TEXT[]    NOT NULL DEFAULT '{}',
     timeout_seconds  INTEGER   NOT NULL DEFAULT 0,
     temperature      REAL      NULL,
-    max_tokens       INTEGER   NULL,
     top_k            INTEGER   NULL,
     top_p            REAL      NULL,
     json_mode        BOOLEAN   NOT NULL DEFAULT FALSE,

@@ -22,17 +22,9 @@ type Config struct {
 	Database       DatabaseConfig
 	JWT            JWTConfig
 	Runners        RunnersConfig
-	Attachments    AttachmentsConfig
-	Log            LogConfig
+	UploadDir      string `yaml:"upload_dir"`
+	LogLevel       string `yaml:"log_level"`
 	MinClientBuild int32
-}
-
-type LogConfig struct {
-	Level string `yaml:"level"`
-}
-
-type AttachmentsConfig struct {
-	SaveDir string `yaml:"save_dir"`
 }
 
 type RunnerEntry struct {
@@ -51,6 +43,20 @@ func (e RunnerEntry) EffectiveToken() string {
 
 type RunnersConfig struct {
 	Entries []RunnerEntry
+}
+
+func (c *Config) DefaultRunnerAddress() string {
+	if c == nil {
+		return ""
+	}
+
+	for _, e := range c.Runners.Entries {
+		if a := strings.TrimSpace(e.Address); a != "" {
+			return a
+		}
+	}
+
+	return ""
 }
 
 type runnerEntryYAML struct {
@@ -144,8 +150,8 @@ type yamlRoot struct {
 	Database       databaseYAML      `yaml:"database"`
 	JWT            jwtYAML           `yaml:"jwt"`
 	Runners        *runnersBlockYAML `yaml:"runners"`
-	Attachments    AttachmentsConfig `yaml:"attachments"`
-	Log            LogConfig         `yaml:"log"`
+	UploadDir      string            `yaml:"upload_dir"`
+	LogLevel       string            `yaml:"log_level"`
 	MinClientBuild int32
 }
 
@@ -179,12 +185,8 @@ func defaultConfig() *Config {
 		Runners: RunnersConfig{
 			Entries: nil,
 		},
-		Attachments: AttachmentsConfig{
-			SaveDir: "./uploads",
-		},
-		Log: LogConfig{
-			Level: "info",
-		},
+		UploadDir:      "./uploads",
+		LogLevel:       "info",
 		MinClientBuild: 1,
 	}
 }
@@ -311,11 +313,11 @@ func mergeYAML(dst *Config, raw *yamlRoot) error {
 	if err := mergeRunnersFromYAML(dst, raw.Runners); err != nil {
 		return err
 	}
-	if raw.Attachments.SaveDir != "" {
-		dst.Attachments.SaveDir = raw.Attachments.SaveDir
+	if raw.UploadDir != "" {
+		dst.UploadDir = raw.UploadDir
 	}
-	if raw.Log.Level != "" {
-		dst.Log.Level = raw.Log.Level
+	if raw.LogLevel != "" {
+		dst.LogLevel = raw.LogLevel
 	}
 	if raw.MinClientBuild != 0 {
 		dst.MinClientBuild = raw.MinClientBuild
@@ -423,11 +425,11 @@ func applyEnvOverrides(c *Config) {
 			}
 		}
 	}
-	if v := strings.TrimSpace(os.Getenv("GEN_ATTACHMENTS_SAVE_DIR")); v != "" {
-		c.Attachments.SaveDir = v
+	if v := strings.TrimSpace(os.Getenv("GEN_UPLOAD_DIR")); v != "" {
+		c.UploadDir = v
 	}
 	if v := strings.TrimSpace(os.Getenv("GEN_LOG_LEVEL")); v != "" {
-		c.Log.Level = v
+		c.LogLevel = v
 	}
 }
 

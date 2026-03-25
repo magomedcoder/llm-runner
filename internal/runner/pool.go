@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/api/pb/runnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
@@ -136,24 +137,45 @@ func llmServerToRunnerPB(si *llmrunnerpb.ServerInfo) *runnerpb.ServerInfo {
 	}
 }
 
-func (p *Pool) ProbeLLMRunner(ctx context.Context, address string) (connected bool, gpus []*runnerpb.GpuInfo, server *runnerpb.ServerInfo) {
+func llmLoadedModelToRunnerPB(in *llmrunnerpb.GetLoadedModelResponse) *runnerpb.LoadedModelStatus {
+	if in == nil {
+		return nil
+	}
+
+	return &runnerpb.LoadedModelStatus{
+		Loaded:       in.GetLoaded(),
+		DisplayName:  in.GetDisplayName(),
+		GgufBasename: in.GetGgufBasename(),
+	}
+}
+
+func (p *Pool) ProbeLLMRunner(ctx context.Context, address string) (connected bool, gpus []*runnerpb.GpuInfo, server *runnerpb.ServerInfo, loaded *runnerpb.LoadedModelStatus) {
 	c, err := p.getClient(address)
 	if err != nil {
-		return false, nil, nil
+		return false, nil, nil, nil
 	}
+
 	ok, err := c.CheckConnection(ctx)
 	if err != nil || !ok {
-		return false, nil, nil
+		return false, nil, nil, nil
 	}
+
 	gi, err := c.GetGpuInfo(ctx)
 	if err == nil && gi != nil {
 		gpus = llmGpusToRunnerPB(gi.GetGpus())
 	}
+
 	si, err := c.GetServerInfo(ctx)
 	if err == nil {
 		server = llmServerToRunnerPB(si)
 	}
-	return true, gpus, server
+
+	lm, err := c.GetLoadedModel(ctx)
+	if err == nil {
+		loaded = llmLoadedModelToRunnerPB(lm)
+	}
+
+	return true, gpus, server, loaded
 }
 
 type candidate struct {

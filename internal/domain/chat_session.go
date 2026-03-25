@@ -13,18 +13,19 @@ type ChatSession struct {
 }
 
 type Message struct {
-	Id               int64
-	SessionId        int64
-	Content          string
-	Role             MessageRole
-	AttachmentName   string
-	AttachmentFileID *int64
-	ToolCallID       string
-	ToolName         string
-	ToolCallsJSON    string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	DeletedAt        *time.Time
+	Id                int64
+	SessionId         int64
+	Content           string
+	Role              MessageRole
+	AttachmentName    string
+	AttachmentFileID  *int64
+	AttachmentContent []byte
+	ToolCallID        string
+	ToolName          string
+	ToolCallsJSON     string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	DeletedAt         *time.Time
 }
 
 func NewChatSession(userId int, title string, model string) *ChatSession {

@@ -2,8 +2,7 @@ server:
   host: "0.0.0.0"
   port: "50051"
 
-log:
-  level: "info"
+log_level: "info"
 
 database:
   host: "postgres"
@@ -19,8 +18,7 @@ jwt:
   access_ttl: "15m"
   refresh_ttl: "168h"
 
-attachments:
-  save_dir: "./uploads"
+upload_dir: "./uploads"
 
 runners:
   - name: "runner-a"

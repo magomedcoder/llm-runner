@@ -29,7 +29,7 @@ class RunnersAdminClearError extends RunnersAdminEvent {
 }
 
 class RunnersAdminDefaultRunnerChanged extends RunnersAdminEvent {
-  final String? address;
+  final String address;
 
   const RunnersAdminDefaultRunnerChanged(this.address);
 
@@ -39,7 +39,7 @@ class RunnersAdminDefaultRunnerChanged extends RunnersAdminEvent {
 
 class RunnersAdminDefaultModelChanged extends RunnersAdminEvent {
   final String runnerAddress;
-  final String? model;
+  final String model;
 
   const RunnersAdminDefaultModelChanged({
     required this.runnerAddress,

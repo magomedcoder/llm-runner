@@ -23,6 +23,7 @@ type ChatUseCase struct {
 	fileRepo            domain.FileRepository
 	llmRepo             domain.LLMRepository
 	attachmentsSaveDir  string
+	defaultRunnerAddr   string
 }
 
 func NewChatUseCase(
@@ -33,6 +34,7 @@ func NewChatUseCase(
 	fileRepo domain.FileRepository,
 	llmRepo domain.LLMRepository,
 	attachmentsSaveDir string,
+	defaultRunnerAddr string,
 ) *ChatUseCase {
 	return &ChatUseCase{
 		sessionRepo:         sessionRepo,
@@ -42,11 +44,20 @@ func NewChatUseCase(
 		fileRepo:            fileRepo,
 		llmRepo:             llmRepo,
 		attachmentsSaveDir:  attachmentsSaveDir,
+		defaultRunnerAddr:   strings.TrimSpace(defaultRunnerAddr),
 	}
 }
 
 func (c *ChatUseCase) GetSelectedRunner(ctx context.Context, userID int) (string, error) {
-	return c.preferenceRepo.GetSelectedRunner(ctx, userID)
+	s, err := c.preferenceRepo.GetSelectedRunner(ctx, userID)
+	if err != nil {
+		return "", err
+	}
+	s = strings.TrimSpace(s)
+	if s != "" {
+		return s, nil
+	}
+	return c.defaultRunnerAddr, nil
 }
 
 func (c *ChatUseCase) SetSelectedRunner(ctx context.Context, userID int, runner string) error {
@@ -79,7 +90,7 @@ func (c *ChatUseCase) GetModels(ctx context.Context) ([]string, error) {
 }
 
 func (c *ChatUseCase) Embed(ctx context.Context, userID int, requestedModel string, text string) ([]float32, error) {
-	model, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userID, strings.TrimSpace(requestedModel), "")
+	model, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userID, strings.TrimSpace(requestedModel), "", c.defaultRunnerAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +99,7 @@ func (c *ChatUseCase) Embed(ctx context.Context, userID int, requestedModel stri
 }
 
 func (c *ChatUseCase) EmbedBatch(ctx context.Context, userID int, requestedModel string, texts []string) ([][]float32, error) {
-	model, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userID, strings.TrimSpace(requestedModel), "")
+	model, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userID, strings.TrimSpace(requestedModel), "", c.defaultRunnerAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +116,6 @@ func genParamsFromSessionSettings(settings *domain.ChatSessionSettings) (stopSeq
 	timeoutSeconds = settings.TimeoutSeconds
 	genParams = &domain.GenerationParams{
 		Temperature: settings.Temperature,
-		MaxTokens:   settings.MaxTokens,
 		TopK:        settings.TopK,
 		TopP:        settings.TopP,
 	}
@@ -138,7 +148,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 		return nil, 0, err
 	}
 
-	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model)
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model, c.defaultRunnerAddr)
 	if err != nil {
 		logger.W("SendMessage: выбор модели: %v", err)
 		return nil, 0, err
@@ -160,7 +170,11 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			return nil, 0, fmt.Errorf("размер вложения превышает рекомендуемый максимум: %d байт", document.MaxRecommendedAttachmentSizeBytes)
 		}
 
-		if err := document.ValidateAttachment(attachmentName, attachmentContent); err != nil {
+		if document.IsImageAttachment(attachmentName) {
+			if err := document.ValidateImageAttachment(attachmentName, attachmentContent); err != nil {
+				return nil, 0, err
+			}
+		} else if err := document.ValidateAttachment(attachmentName, attachmentContent); err != nil {
 			return nil, 0, err
 		}
 	}
@@ -189,9 +203,14 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	}
 	messagesForLLM = append(messagesForLLM, messages...)
 	if len(attachmentContent) > 0 && attachmentName != "" {
-		fullContent := buildMessageWithFile(attachmentName, attachmentContent, userMessage)
 		userMsgForLLM := *userMsg
-		userMsgForLLM.Content = fullContent
+		if document.IsImageAttachment(attachmentName) {
+			userMsgForLLM.Content = userMessage
+			userMsgForLLM.AttachmentName = attachmentName
+			userMsgForLLM.AttachmentContent = attachmentContent
+		} else {
+			userMsgForLLM.Content = buildMessageWithFile(attachmentName, attachmentContent, userMessage)
+		}
 		messagesForLLM = append(messagesForLLM, &userMsgForLLM)
 	} else {
 		messagesForLLM = append(messagesForLLM, userMsg)
@@ -205,6 +224,11 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	messageID := assistantMsg.Id
 
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
+
+	if err := c.hydrateImageAttachmentsForRunner(ctx, messagesForLLM); err != nil {
+		logger.E("SendMessage: подгрузка вложений для раннера: %v", err)
+		return nil, 0, err
+	}
 
 	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
@@ -241,7 +265,7 @@ func (c *ChatUseCase) SendMessageMulti(ctx context.Context, userId int, sessionI
 		return nil, 0, err
 	}
 
-	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model)
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model, c.defaultRunnerAddr)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -288,6 +312,12 @@ func (c *ChatUseCase) SendMessageMulti(ctx context.Context, userId int, sessionI
 	messageID := assistantMsg.Id
 
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
+
+	if err := c.hydrateImageAttachmentsForRunner(ctx, messagesForLLM); err != nil {
+		logger.E("SendMessageMulti: подгрузка вложений для раннера: %v", err)
+		return nil, 0, err
+	}
+
 	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
 		logger.E("SendMessageMulti: вызов LLM: %v", err)
@@ -332,7 +362,6 @@ func (c *ChatUseCase) UpdateSessionSettings(
 	stopSequences []string,
 	timeoutSeconds int32,
 	temperature *float32,
-	maxTokens *int32,
 	topK *int32,
 	topP *float32,
 	jsonMode bool,
@@ -344,13 +373,15 @@ func (c *ChatUseCase) UpdateSessionSettings(
 	if err != nil {
 		return nil, err
 	}
+	if stopSequences == nil {
+		stopSequences = []string{}
+	}
 	settings := &domain.ChatSessionSettings{
 		SessionID:      sessionID,
 		SystemPrompt:   strings.TrimSpace(systemPrompt),
 		StopSequences:  stopSequences,
 		TimeoutSeconds: timeoutSeconds,
 		Temperature:    temperature,
-		MaxTokens:      maxTokens,
 		TopK:           topK,
 		TopP:           topP,
 		JSONMode:       jsonMode,
@@ -381,7 +412,7 @@ func (c *ChatUseCase) CreateSession(ctx context.Context, userId int, title strin
 		title = "Чат от " + time.Now().Format("15:04:05 02.01.2006")
 	}
 
-	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", "")
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", "", c.defaultRunnerAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -431,6 +462,68 @@ func (c *ChatUseCase) UpdateSessionTitle(ctx context.Context, userId int, sessio
 	}
 
 	return session, nil
+}
+
+func (c *ChatUseCase) hydrateImageAttachmentsForRunner(ctx context.Context, messages []*domain.Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+
+	for _, m := range messages {
+		if m == nil {
+			continue
+		}
+
+		if m.AttachmentFileID == nil || len(m.AttachmentContent) > 0 {
+			continue
+		}
+
+		name := strings.TrimSpace(m.AttachmentName)
+		if name == "" || !document.IsImageAttachment(name) {
+			continue
+		}
+
+		if strings.TrimSpace(c.attachmentsSaveDir) == "" {
+			return fmt.Errorf("изображение в истории чата (file_id=%d): не задан каталог вложений", *m.AttachmentFileID)
+		}
+
+		f, err := c.fileRepo.GetById(ctx, *m.AttachmentFileID)
+		if err != nil {
+			return fmt.Errorf("файл вложения id=%d: %w", *m.AttachmentFileID, err)
+		}
+
+		if f == nil {
+			return fmt.Errorf("файл вложения id=%d не найден", *m.AttachmentFileID)
+		}
+
+		path := strings.TrimSpace(f.StoragePath)
+		if path == "" {
+			return fmt.Errorf("файл вложения id=%d: пустой storage_path", *m.AttachmentFileID)
+		}
+
+		expectedDir := filepath.Clean(filepath.Join(c.attachmentsSaveDir, strconv.FormatInt(m.SessionId, 10)))
+		cleanPath := filepath.Clean(path)
+		if !strings.HasPrefix(cleanPath, expectedDir+string(filepath.Separator)) && cleanPath != expectedDir {
+			return fmt.Errorf("файл вложения id=%d: путь вне каталога сессии", *m.AttachmentFileID)
+		}
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("чтение вложения %q: %w", path, err)
+		}
+
+		if len(data) > document.MaxRecommendedAttachmentSizeBytes {
+			return fmt.Errorf("вложение %q превышает лимит %d байт", path, document.MaxRecommendedAttachmentSizeBytes)
+		}
+
+		if err := document.ValidateImageAttachment(name, data); err != nil {
+			return err
+		}
+
+		m.AttachmentContent = data
+	}
+
+	return nil
 }
 
 func filterHistoryForLLM(messages []*domain.Message) []*domain.Message {

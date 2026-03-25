@@ -11,20 +11,23 @@ import (
 )
 
 type EditorUseCase struct {
-	llmRepo        domain.LLMRepository
-	preferenceRepo domain.ChatPreferenceRepository
-	historyRepo    domain.EditorHistoryRepository
+	llmRepo           domain.LLMRepository
+	preferenceRepo    domain.ChatPreferenceRepository
+	historyRepo       domain.EditorHistoryRepository
+	defaultRunnerAddr string
 }
 
 func NewEditorUseCase(
 	llmRepo domain.LLMRepository,
 	preferenceRepo domain.ChatPreferenceRepository,
 	historyRepo domain.EditorHistoryRepository,
+	defaultRunnerAddr string,
 ) *EditorUseCase {
 	return &EditorUseCase{
-		llmRepo:        llmRepo,
-		preferenceRepo: preferenceRepo,
-		historyRepo:    historyRepo,
+		llmRepo:           llmRepo,
+		preferenceRepo:    preferenceRepo,
+		historyRepo:       historyRepo,
+		defaultRunnerAddr: strings.TrimSpace(defaultRunnerAddr),
 	}
 }
 
@@ -38,7 +41,7 @@ func (e *EditorUseCase) Transform(
 	if strings.TrimSpace(text) == "" {
 		return "", fmt.Errorf("пустой текст")
 	}
-	resolvedModel, err := resolveModelForUser(ctx, e.llmRepo, e.preferenceRepo, userID, "", "")
+	resolvedModel, err := resolveModelForUser(ctx, e.llmRepo, e.preferenceRepo, userID, "", "", e.defaultRunnerAddr)
 	if err != nil {
 		return "", err
 	}

@@ -547,7 +547,6 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         stopSequences: event.stopSequences,
         timeoutSeconds: event.timeoutSeconds,
         temperature: event.temperature,
-        maxTokens: event.maxTokens,
         topK: event.topK,
         topP: event.topP,
         jsonMode: event.jsonMode,
@@ -623,7 +622,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     ChatLoadRunners event,
     Emitter<ChatState> emit,
   ) async {
+    emit(state.copyWith(runnersStatusRefreshing: true));
     try {
+      bool? hasActiveRunners = state.hasActiveRunners;
+      try {
+        hasActiveRunners = await getRunnersStatusUseCase();
+      } catch (_) {}
+
       final runnerInfos = await getRunnersUseCase();
       final runners = _extractAvailableRunners(runnerInfos);
       final runnerNames = _extractRunnerNames(runnerInfos);
@@ -651,8 +656,12 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         runners: runners,
         runnerNames: runnerNames,
         selectedRunner: selectedRunner ?? state.selectedRunner,
+        hasActiveRunners: hasActiveRunners,
+        runnersStatusRefreshing: false,
       ));
-    } catch (_) {}
+    } catch (_) {
+      emit(state.copyWith(runnersStatusRefreshing: false));
+    }
   }
 
   Future<void> _onSelectRunner(

@@ -36,6 +36,7 @@ func resolveModelForUser(
 	userID int,
 	requestedModel string,
 	sessionModel string,
+	configDefaultRunner string,
 ) (string, error) {
 	availableRaw, err := llmRepo.GetModels(ctx)
 	if err != nil {
@@ -61,7 +62,15 @@ func resolveModelForUser(
 	}
 
 	selectedRunner, err := preferenceRepo.GetSelectedRunner(ctx, userID)
-	if err == nil && strings.TrimSpace(selectedRunner) != "" {
+	if err != nil {
+		return "", err
+	}
+	selectedRunner = strings.TrimSpace(selectedRunner)
+	if selectedRunner == "" {
+		selectedRunner = strings.TrimSpace(configDefaultRunner)
+	}
+
+	if selectedRunner != "" {
 		defaultModel, err := preferenceRepo.GetDefaultRunnerModel(ctx, userID, selectedRunner)
 		if err == nil {
 			defaultModel = strings.TrimSpace(defaultModel)

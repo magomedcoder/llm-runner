@@ -20,7 +20,7 @@ func (r *chatSessionSettingsRepository) GetBySessionID(ctx context.Context, sess
 		SessionID: sessionID,
 	}
 	err := r.db.QueryRow(ctx, `
-		SELECT system_prompt, stop_sequences, timeout_seconds, temperature, max_tokens, top_k, top_p, json_mode, json_schema, tools_json, profile
+		SELECT system_prompt, stop_sequences, timeout_seconds, temperature, top_k, top_p, json_mode, json_schema, tools_json, profile
 		FROM chat_session_settings
 		WHERE session_id = $1
 	`, sessionID).Scan(
@@ -28,7 +28,6 @@ func (r *chatSessionSettingsRepository) GetBySessionID(ctx context.Context, sess
 		&settings.StopSequences,
 		&settings.TimeoutSeconds,
 		&settings.Temperature,
-		&settings.MaxTokens,
 		&settings.TopK,
 		&settings.TopP,
 		&settings.JSONMode,
@@ -51,7 +50,6 @@ func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *do
 		    stop_sequences,
 		    timeout_seconds,
 		    temperature,
-		    max_tokens,
 		    top_k,
 		    top_p,
 		    json_mode,
@@ -60,13 +58,12 @@ func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *do
 		    profile,
 		    updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 		ON CONFLICT (session_id) DO UPDATE SET
 		    system_prompt = EXCLUDED.system_prompt,
 		    stop_sequences = EXCLUDED.stop_sequences,
 		    timeout_seconds = EXCLUDED.timeout_seconds,
 		    temperature = EXCLUDED.temperature,
-		    max_tokens = EXCLUDED.max_tokens,
 		    top_k = EXCLUDED.top_k,
 		    top_p = EXCLUDED.top_p,
 		    json_mode = EXCLUDED.json_mode,
@@ -80,7 +77,6 @@ func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *do
 		settings.StopSequences,
 		settings.TimeoutSeconds,
 		settings.Temperature,
-		settings.MaxTokens,
 		settings.TopK,
 		settings.TopP,
 		settings.JSONMode,

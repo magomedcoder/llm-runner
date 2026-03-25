@@ -127,7 +127,6 @@ class ChatUpdateSessionSettings extends ChatEvent {
   final List<String> stopSequences;
   final int timeoutSeconds;
   final double? temperature;
-  final int? maxTokens;
   final int? topK;
   final double? topP;
   final bool jsonMode;
@@ -140,7 +139,6 @@ class ChatUpdateSessionSettings extends ChatEvent {
     required this.stopSequences,
     required this.timeoutSeconds,
     this.temperature,
-    this.maxTokens,
     this.topK,
     this.topP,
     required this.jsonMode,
@@ -155,7 +153,6 @@ class ChatUpdateSessionSettings extends ChatEvent {
     stopSequences,
     timeoutSeconds,
     temperature,
-    maxTokens,
     topK,
     topP,
     jsonMode,

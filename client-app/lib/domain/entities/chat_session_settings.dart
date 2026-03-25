@@ -6,7 +6,6 @@ class ChatSessionSettings extends Equatable {
   final List<String> stopSequences;
   final int timeoutSeconds;
   final double? temperature;
-  final int? maxTokens;
   final int? topK;
   final double? topP;
   final bool jsonMode;
@@ -20,7 +19,6 @@ class ChatSessionSettings extends Equatable {
     this.stopSequences = const [],
     this.timeoutSeconds = 0,
     this.temperature,
-    this.maxTokens,
     this.topK,
     this.topP,
     this.jsonMode = false,
@@ -36,7 +34,6 @@ class ChatSessionSettings extends Equatable {
     stopSequences,
     timeoutSeconds,
     temperature,
-    maxTokens,
     topK,
     topP,
     jsonMode,

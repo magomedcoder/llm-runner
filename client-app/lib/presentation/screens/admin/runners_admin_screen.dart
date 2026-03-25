@@ -37,9 +37,31 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
         .toList()
       ..sort();
 
-    final selectedDefault = runnersState.defaultRunner != null && enabledRunners.contains(runnersState.defaultRunner)
-        ? runnersState.defaultRunner
-        : null;
+    if (enabledRunners.isEmpty) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Раннер по умолчанию', style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(
+                'Нет включённых раннеров',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    final selectedDefault =
+        runnersState.defaultRunner != null && enabledRunners.contains(runnersState.defaultRunner)
+        ? runnersState.defaultRunner!
+        : enabledRunners.first;
 
     return Card(
       child: Padding(
@@ -49,8 +71,8 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
           children: [
             Text('Раннер по умолчанию', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),
-            DropdownButtonFormField<String?>(
-              initialValue: selectedDefault,
+            DropdownButtonFormField<String>(
+              value: selectedDefault,
               isExpanded: true,
               decoration: const InputDecoration(
                 border: OutlineInputBorder(),
@@ -58,19 +80,17 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
                 isDense: true,
               ),
               items: [
-                const DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text('Не выбран'),
-                ),
                 for (final address in enabledRunners)
-                  DropdownMenuItem<String?>(
+                  DropdownMenuItem<String>(
                     value: address,
                     child: Text(address),
                   ),
               ],
               onChanged: isAdminUser
                 ? (value) {
-                  _bloc.add(RunnersAdminDefaultRunnerChanged(value));
+                  if (value != null) {
+                    _bloc.add(RunnersAdminDefaultRunnerChanged(value));
+                  }
                 }
               : null,
             ),

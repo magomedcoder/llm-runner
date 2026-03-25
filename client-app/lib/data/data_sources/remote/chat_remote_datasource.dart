@@ -55,7 +55,6 @@ abstract class IChatRemoteDataSource {
     required List<String> stopSequences,
     required int timeoutSeconds,
     double? temperature,
-    int? maxTokens,
     int? topK,
     double? topP,
     required bool jsonMode,
@@ -359,7 +358,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       stopSequences: List<String>.from(response.stopSequences),
       timeoutSeconds: response.timeoutSeconds,
       temperature: response.hasTemperature() ? response.temperature : null,
-      maxTokens: response.hasMaxTokens() ? response.maxTokens : null,
       topK: response.hasTopK() ? response.topK : null,
       topP: response.hasTopP() ? response.topP : null,
       jsonMode: response.jsonMode,
@@ -376,7 +374,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     required List<String> stopSequences,
     required int timeoutSeconds,
     double? temperature,
-    int? maxTokens,
     int? topK,
     double? topP,
     required bool jsonMode,
@@ -397,9 +394,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     if (temperature != null) {
       request.temperature = temperature;
     }
-    if (maxTokens != null) {
-      request.maxTokens = maxTokens;
-    }
     if (topK != null) {
       request.topK = topK;
     }
@@ -415,7 +409,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       stopSequences: List<String>.from(response.stopSequences),
       timeoutSeconds: response.timeoutSeconds,
       temperature: response.hasTemperature() ? response.temperature : null,
-      maxTokens: response.hasMaxTokens() ? response.maxTokens : null,
       topK: response.hasTopK() ? response.topK : null,
       topP: response.hasTopP() ? response.topP : null,
       jsonMode: response.jsonMode,

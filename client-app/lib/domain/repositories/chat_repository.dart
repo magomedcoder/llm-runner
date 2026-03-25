@@ -35,7 +35,6 @@ abstract interface class ChatRepository {
     required List<String> stopSequences,
     required int timeoutSeconds,
     double? temperature,
-    int? maxTokens,
     int? topK,
     double? topP,
     required bool jsonMode,

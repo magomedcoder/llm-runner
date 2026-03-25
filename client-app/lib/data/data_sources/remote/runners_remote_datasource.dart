@@ -2,6 +2,7 @@ import 'package:gen/core/auth_guard.dart';
 import 'package:gen/core/grpc_channel_manager.dart';
 import 'package:gen/core/log/logs.dart';
 import 'package:gen/domain/entities/gpu_info.dart' as gpu_ent;
+import 'package:gen/domain/entities/loaded_model_status.dart' as lm_ent;
 import 'package:gen/domain/entities/runner_info.dart' as domain;
 import 'package:gen/domain/entities/server_info.dart' as srv_ent;
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
@@ -53,6 +54,15 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
             models: List<String>.from(s.models),
           );
         }
+        lm_ent.LoadedModelStatus? loaded;
+        if (r.hasLoadedModel()) {
+          final lm = r.loadedModel;
+          loaded = lm_ent.LoadedModelStatus(
+            loaded: lm.loaded,
+            displayName: lm.displayName,
+            ggufBasename: lm.ggufBasename,
+          );
+        }
         return domain.RunnerInfo(
           address: r.address,
           name: r.name,
@@ -60,6 +70,7 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
           connected: r.connected,
           gpus: gpus,
           serverInfo: server,
+          loadedModel: loaded,
         );
       }).toList();
     } catch (e) {

@@ -5,9 +5,13 @@ import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/domain/entities/message.dart';
 import 'package:gen/presentation/widgets/code_block_builder.dart';
 
+Color _messageBodyTextColor(ColorScheme cs) {
+  return cs.onSurface.withValues(alpha: 0.94);
+}
+
 BorderRadius _bubbleRadius(bool isUser) {
-  const r = 18.0;
-  const tail = 6.0;
+  const r = 20.0;
+  const tail = 8.0;
   return BorderRadius.only(
     topLeft: const Radius.circular(r),
     topRight: const Radius.circular(r),
@@ -35,7 +39,7 @@ class _ChatBubbleState extends State<ChatBubble> {
 
   MarkdownStyleSheet _assistantMarkdownSheet(ThemeData theme) {
     final cs = theme.colorScheme;
-    final onVar = cs.onSurfaceVariant;
+    final onVar = _messageBodyTextColor(cs);
     final base = MarkdownStyleSheet.fromTheme(theme);
     return base.copyWith(
       p: base.p?.copyWith(color: onVar, fontSize: 15, height: 1.5),
@@ -47,12 +51,12 @@ class _ChatBubbleState extends State<ChatBubble> {
       h6: base.h6?.copyWith(color: onVar),
       em: base.em?.copyWith(color: onVar, fontStyle: FontStyle.italic),
       strong: base.strong?.copyWith(color: onVar, fontWeight: FontWeight.w600),
-      a: base.a?.copyWith(color: cs.primary, decoration: TextDecoration.underline),
+      a: base.a?.copyWith(color: onVar, decoration: TextDecoration.underline),
       code: base.code?.copyWith(
         color: onVar,
         fontFamily: 'monospace',
         fontSize: 13,
-        backgroundColor: onVar.withValues(alpha: 0.08),
+        backgroundColor: Colors.transparent,
       ),
       listIndent: 24,
       listBullet: base.listBullet?.copyWith(color: onVar),
@@ -69,7 +73,7 @@ class _ChatBubbleState extends State<ChatBubble> {
       blockquotePadding: const EdgeInsets.only(left: 12, top: 2, bottom: 2),
       codeblockPadding: const EdgeInsets.all(10),
       codeblockDecoration: BoxDecoration(
-        color: onVar.withValues(alpha: 0.08),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(8),
       ),
       horizontalRuleDecoration: BoxDecoration(
@@ -98,6 +102,7 @@ class _ChatBubbleState extends State<ChatBubble> {
       : (Breakpoints.isTablet(context) ? 420.0 : 560.0);
     final semanticsRole = isUser ? 'Ваше сообщение' : 'Ответ ассистента';
     final hasCopyableText = message.content.trim().isNotEmpty;
+    final messageTextColor = _messageBodyTextColor(theme.colorScheme);
 
     return Semantics(
       container: true,
@@ -119,9 +124,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                 maxWidth: maxBubbleWidth,
               ),
               decoration: BoxDecoration(
-                color: isUser
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.surfaceContainerHighest,
+                color: theme.colorScheme.surfaceContainerHigh,
                 borderRadius: _bubbleRadius(isUser),
               ),
               child: Column(
@@ -137,9 +140,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                           Icon(
                             Icons.insert_drive_file_rounded,
                             size: 18,
-                            color: isUser
-                              ? theme.colorScheme.onPrimary.withValues(alpha: 0.9)
-                              : theme.colorScheme.onSurfaceVariant,
+                            color: messageTextColor,
                           ),
                           const SizedBox(width: 6),
                           Flexible(
@@ -147,9 +148,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                               message.attachmentFileName!,
                               style: TextStyle(
                                 fontSize: 13,
-                                color: isUser
-                                  ? theme.colorScheme.onPrimary.withValues(alpha: 0.9)
-                                  : theme.colorScheme.onSurfaceVariant,
+                                color: messageTextColor,
                               ),
                               overflow: TextOverflow.ellipsis,
                             ),
@@ -162,7 +161,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                       ? SelectableText(
                           message.content,
                           style: TextStyle(
-                            color: theme.colorScheme.onPrimary,
+                            color: messageTextColor,
                             fontSize: 15,
                             height: 1.5,
                           ),
@@ -176,7 +175,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                               textStyle: TextStyle(
                                 fontSize: 13,
                                 fontFamily: 'monospace',
-                                color: theme.colorScheme.onSurfaceVariant,
+                                color: messageTextColor,
                               ),
                             ),
                           },
@@ -192,9 +191,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                             height: 12,
                             child: CircularProgressIndicator(
                               strokeWidth: 1.5,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.75,
-                              ),
+                              color: messageTextColor.withValues(alpha: 0.75),
                             ),
                           ),
                           const SizedBox(width: 8),
@@ -203,9 +200,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                             style: TextStyle(
                               fontSize: 12,
                               height: 1.2,
-                              color: theme.colorScheme.onSurfaceVariant.withValues(
-                                alpha: 0.75,
-                              ),
+                              color: messageTextColor.withValues(alpha: 0.75),
                             ),
                           ),
                         ],
@@ -217,7 +212,7 @@ class _ChatBubbleState extends State<ChatBubble> {
             if (hasCopyableText || isStreaming)
               Padding(
                 padding: const EdgeInsets.only(left: 4, right: 4, top: 2, bottom: 4),
-                child: TextButton.icon(
+                child: IconButton(
                   onPressed: hasCopyableText
                       ? () async {
                           await Clipboard.setData(
@@ -239,24 +234,19 @@ class _ChatBubbleState extends State<ChatBubble> {
                       : null,
                   icon: Icon(
                     _justCopied ? Icons.check_rounded : Icons.copy_rounded,
-                    size: 16,
+                    size: 18,
                     color: theme.colorScheme.onSurfaceVariant.withValues(
                       alpha: hasCopyableText ? 1 : 0.4,
                     ),
                   ),
-                  label: Text(
-                    _justCopied ? 'Скопировано' : 'Копировать',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: hasCopyableText ? 1 : 0.4,
-                      ),
+                  tooltip: _justCopied ? 'Скопировано' : 'Копировать',
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                  style: IconButton.styleFrom(
+                    foregroundColor: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: hasCopyableText ? 1 : 0.4,
                     ),
-                  ),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
                 ),
               ),

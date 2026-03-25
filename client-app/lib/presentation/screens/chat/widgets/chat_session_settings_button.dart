@@ -15,18 +15,8 @@ class ChatSessionSettingsButton extends StatelessWidget {
     return t / 2.0;
   }
 
-  static double _responseLengthFromTokens(int? maxTokens) {
-    final tokens = (maxTokens ?? 512).clamp(64, 4096);
-    return (tokens - 64) / (4096 - 64);
-  }
-
   static double _temperatureFromCreativity(double creativity) {
     return creativity.clamp(0.0, 1.0) * 2.0;
-  }
-
-  static int _maxTokensFromResponseLength(double length) {
-    final raw = 64 + (length.clamp(0.0, 1.0) * (4096 - 64));
-    return raw.round();
   }
 
   static const Map<String, String> _profileTitles = {
@@ -80,7 +70,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
     final stopController = TextEditingController(text: current.stopSequences.join('\n'),);
     final timeoutController = TextEditingController(text: current.timeoutSeconds > 0 ? current.timeoutSeconds.toString() : '');
     final temperatureController = TextEditingController(text: current.temperature?.toString() ?? '');
-    final maxTokensController = TextEditingController(text: current.maxTokens?.toString() ?? '');
     final topKController = TextEditingController(text: current.topK?.toString() ?? '');
     final topPController = TextEditingController(text: current.topP?.toString() ?? '');
     final jsonSchemaController = TextEditingController(text: current.jsonSchema);
@@ -89,7 +78,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
     var expertMode = false;
     var selectedProfile = current.profile;
     var creativity = _creativityFromTemperature(current.temperature);
-    var responseLength = _responseLengthFromTokens(current.maxTokens);
 
     void applyProfile(String profileKey) {
       selectedProfile = profileKey;
@@ -98,7 +86,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
           promptController.text = 'Ты опытный инженер-программист. Давай короткие и точные ответы, показывай рабочие примеры кода, отмечай риски и edge cases.';
           timeoutController.text = '120';
           temperatureController.text = '0.2';
-          maxTokensController.text = '1400';
           topPController.text = '0.9';
           topKController.text = '40';
           break;
@@ -106,7 +93,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
           promptController.text = 'Ты аналитик данных. Структурируй вывод: предпосылки, расчеты, выводы, ограничения. Используй списки и таблицы, где уместно.';
           timeoutController.text = '120';
           temperatureController.text = '0.3';
-          maxTokensController.text = '1200';
           topPController.text = '0.9';
           topKController.text = '40';
           break;
@@ -114,7 +100,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
           promptController.text = 'Ты технический писатель. Пиши ясно и последовательно, с заголовками, шагами и примерами. Сохраняй единый стиль.';
           timeoutController.text = '90';
           temperatureController.text = '0.4';
-          maxTokensController.text = '1100';
           topPController.text = '0.92';
           topKController.text = '40';
           break;
@@ -122,15 +107,12 @@ class ChatSessionSettingsButton extends StatelessWidget {
           promptController.text = 'Ты профессиональный переводчик. Сохраняй смысл, терминологию и стиль оригинала. При неоднозначности предложи варианты.';
           timeoutController.text = '90';
           temperatureController.text = '0.2';
-          maxTokensController.text = '900';
           topPController.text = '0.9';
           topKController.text = '40';
           break;
       }
       final t = double.tryParse(temperatureController.text.trim());
-      final mt = int.tryParse(maxTokensController.text.trim());
       creativity = _creativityFromTemperature(t);
-      responseLength = _responseLengthFromTokens(mt);
     }
 
     showDialog<void>(
@@ -234,10 +216,8 @@ class ChatSessionSettingsButton extends StatelessWidget {
                             ),
                             const Text('Ниже - более предсказуемо, выше - более разнообразно',),
                             const SizedBox(height: 8),
-                            Text('Максимальная длина ответа: ${_maxTokensFromResponseLength(responseLength)} токенов',),
-                            Slider(
-                              value: responseLength,
-                              onChanged: (v) => setStateDialog(() => responseLength = v),
+                            const Text(
+                              'Длина ответа задаётся на стороне llm-runner (в Gen не настраивается).',
                             ),
                           ],
                         ),
@@ -290,34 +270,15 @@ class ChatSessionSettingsButton extends StatelessWidget {
                               ],
                             ),
                             const SizedBox(height: 12),
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: TextField(
-                                    controller: topKController,
-                                    keyboardType: TextInputType.number,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Top K',
-                                      helperText: 'Оставляет только K самых вероятных токенов на каждом шаге',
-                                      helperMaxLines: 3,
-                                      border: OutlineInputBorder(),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: TextField(
-                                    controller: maxTokensController,
-                                    keyboardType: TextInputType.number,
-                                    decoration: const InputDecoration(
-                                      labelText: 'Максимальное количество токенов',
-                                      helperText: 'Максимальная длина ответа в токенах. Пусто - значение по умолчанию раннера',
-                                      helperMaxLines: 3,
-                                      border: OutlineInputBorder(),
-                                    ),
-                                  ),
-                                ),
-                              ],
+                            TextField(
+                              controller: topKController,
+                              keyboardType: TextInputType.number,
+                              decoration: const InputDecoration(
+                                labelText: 'Top K',
+                                helperText: 'Оставляет только K самых вероятных токенов на каждом шаге',
+                                helperMaxLines: 3,
+                                border: OutlineInputBorder(),
+                              ),
                             ),
                           ],
                         ),
@@ -380,9 +341,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
                 final temperature = expertMode
                   ? double.tryParse(temperatureController.text.trim())
                   : _temperatureFromCreativity(creativity);
-                final maxTokens = expertMode
-                  ? int.tryParse(maxTokensController.text.trim())
-                  : _maxTokensFromResponseLength(responseLength);
                 final topK = expertMode
                   ? int.tryParse(topKController.text.trim())
                   : current.topK;
@@ -402,7 +360,6 @@ class ChatSessionSettingsButton extends StatelessWidget {
                     stopSequences: stop,
                     timeoutSeconds: timeout,
                     temperature: temperature,
-                    maxTokens: maxTokens,
                     topK: topK,
                     topP: topP,
                     jsonMode: jsonMode,

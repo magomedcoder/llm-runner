@@ -45,21 +45,27 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
         for (final runner in runners)
           if (runner.enabled && runner.address.isNotEmpty) runner.address,
       };
-      final validDefault =
-          defaultRunner != null && availableAddresses.contains(defaultRunner)
+      var validDefault = defaultRunner != null && availableAddresses.contains(defaultRunner)
           ? defaultRunner
           : null;
-      if (validDefault == null && defaultRunner != null) {
-        await setSelectedRunnerUseCase(null);
+      if (validDefault == null && availableAddresses.isNotEmpty) {
+        final sorted = availableAddresses.toList()..sort();
+        validDefault = sorted.first;
+        await setSelectedRunnerUseCase(validDefault);
       }
       final defaultModelsByRunner = <String, String?>{};
       for (final runner in runners) {
         final models = runner.serverInfo?.models ?? const <String>[];
+        if (models.isEmpty) {
+          continue;
+        }
         final savedDefault = await getDefaultRunnerModelUseCase(runner.address);
         if (savedDefault != null && models.contains(savedDefault)) {
           defaultModelsByRunner[runner.address] = savedDefault;
-        } else if (savedDefault != null) {
-          await setDefaultRunnerModelUseCase(runner.address, null);
+        } else {
+          final pick = models.first;
+          await setDefaultRunnerModelUseCase(runner.address, pick);
+          defaultModelsByRunner[runner.address] = pick;
         }
       }
 
@@ -127,11 +133,7 @@ class RunnersAdminBloc extends Bloc<RunnersAdminEvent, RunnersAdminState> {
     try {
       await setDefaultRunnerModelUseCase(event.runnerAddress, event.model);
       final updated = Map<String, String?>.from(state.defaultModelsByRunner);
-      if (event.model == null || event.model!.isEmpty) {
-        updated.remove(event.runnerAddress);
-      } else {
-        updated[event.runnerAddress] = event.model;
-      }
+      updated[event.runnerAddress] = event.model;
       emit(state.copyWith(defaultModelsByRunner: updated));
     } catch (e) {
       emit(state.copyWith(

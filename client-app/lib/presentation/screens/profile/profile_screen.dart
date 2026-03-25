@@ -96,7 +96,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  Future<void> _setSelectedRunner(String? runner) async {
+  Future<void> _setSelectedRunner(String runner) async {
     setState(() => _savingRunnerPref = true);
     try {
       await sl<SetSelectedRunnerUseCase>()(runner);
@@ -301,29 +301,48 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ).textTheme.labelLarge?.copyWith(color: scheme.onSurfaceVariant),
                 ),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<String?>(
-                  initialValue: _selectedRunner,
-                  isExpanded: true,
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                    labelText: 'Раннер',
-                  ),
-                  items: [
-                    const DropdownMenuItem<String?>(
-                      value: null,
-                      child: Text('Не выбран'),
-                    ),
-                    for (final address in _availableRunners)
-                      DropdownMenuItem<String?>(
-                        value: address,
-                        child: Text(_runnerNames[address] ?? address),
+                if (_loadingRunnerPrefs)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Center(
+                      child: SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                  ],
-                  onChanged: _loadingRunnerPrefs || _savingRunnerPref
-                      ? null
-                      : (value) => _setSelectedRunner(value),
-                ),
+                    ),
+                  )
+                else if (_availableRunners.isEmpty)
+                  Text(
+                    'Нет доступных раннеров',
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurfaceVariant,
+                    ),
+                  )
+                else
+                  DropdownButtonFormField<String>(
+                    value: _selectedRunner ?? _availableRunners.first,
+                    isExpanded: true,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      isDense: true,
+                      labelText: 'Раннер',
+                    ),
+                    items: [
+                      for (final address in _availableRunners)
+                        DropdownMenuItem<String>(
+                          value: address,
+                          child: Text(_runnerNames[address] ?? address),
+                        ),
+                    ],
+                    onChanged: _savingRunnerPref
+                        ? null
+                        : (value) {
+                          if (value != null) {
+                            _setSelectedRunner(value);
+                          }
+                        },
+                  ),
                 const SizedBox(height: 20),
                 Divider(color: scheme.outlineVariant),
                 const SizedBox(height: 20),

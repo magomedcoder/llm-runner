@@ -130,13 +130,12 @@ message UpdateSessionSettingsRequest {
   repeated string stop_sequences = 3;
   int32 timeout_seconds = 4;
   optional float temperature = 5;
-  optional int32 max_tokens = 6;
-  optional int32 top_k = 7;
-  optional float top_p = 8;
-  bool json_mode = 9;
-  string json_schema = 10;
-  string tools_json = 11;
-  string profile = 12;
+  optional int32 top_k = 6;
+  optional float top_p = 7;
+  bool json_mode = 8;
+  string json_schema = 9;
+  string tools_json = 10;
+  string profile = 11;
 }
 
 message SessionSettings {
@@ -145,13 +144,12 @@ message SessionSettings {
   repeated string stop_sequences = 3;
   int32 timeout_seconds = 4;
   optional float temperature = 5;
-  optional int32 max_tokens = 6;
-  optional int32 top_k = 7;
-  optional float top_p = 8;
-  bool json_mode = 9;
-  string json_schema = 10;
-  string tools_json = 11;
-  string profile = 12;
+  optional int32 top_k = 6;
+  optional float top_p = 7;
+  bool json_mode = 8;
+  string json_schema = 9;
+  string tools_json = 10;
+  string profile = 11;
 }
 
 message SelectedRunnerResponse {

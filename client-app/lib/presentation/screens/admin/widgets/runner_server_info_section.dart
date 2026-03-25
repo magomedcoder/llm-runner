@@ -4,7 +4,7 @@ import 'package:gen/domain/entities/server_info.dart';
 class RunnerServerInfoSection extends StatelessWidget {
   final ServerInfo serverInfo;
   final String? defaultModel;
-  final ValueChanged<String?>? onDefaultModelChanged;
+  final ValueChanged<String>? onDefaultModelChanged;
 
   const RunnerServerInfoSection({
     super.key,
@@ -78,11 +78,10 @@ class RunnerServerInfoSection extends StatelessWidget {
               .toList(),
           ),
           const SizedBox(height: 10),
-          DropdownButtonFormField<String?>(
-            initialValue: defaultModel != null &&
-                    serverInfo.models.contains(defaultModel)
+          DropdownButtonFormField<String>(
+            value: defaultModel != null && serverInfo.models.contains(defaultModel)
                 ? defaultModel
-                : null,
+                : serverInfo.models.first,
             isExpanded: true,
             decoration: const InputDecoration(
               border: OutlineInputBorder(),
@@ -90,17 +89,19 @@ class RunnerServerInfoSection extends StatelessWidget {
               labelText: 'Модель по умолчанию',
             ),
             items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('Не выбрана'),
-              ),
               for (final model in serverInfo.models)
-                DropdownMenuItem<String?>(
+                DropdownMenuItem<String>(
                   value: model,
                   child: Text(model),
                 ),
             ],
-            onChanged: onDefaultModelChanged,
+            onChanged: onDefaultModelChanged == null
+              ? null
+              : (String? v) {
+                if (v != null) {
+                  onDefaultModelChanged!(v);
+                }
+              },
           ),
         ],
       ],

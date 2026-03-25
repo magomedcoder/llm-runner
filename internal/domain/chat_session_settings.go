@@ -6,7 +6,6 @@ type ChatSessionSettings struct {
 	StopSequences  []string
 	TimeoutSeconds int32
 	Temperature    *float32
-	MaxTokens      *int32
 	TopK           *int32
 	TopP           *float32
 	JSONMode       bool
