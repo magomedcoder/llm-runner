@@ -32,7 +32,7 @@ func mergeUniqueStrings(a, b []string) []string {
 func TestMergeUniqueStrings(t *testing.T) {
 	got := mergeUniqueStrings([]string{"a", "b"}, []string{"b", "c"})
 	if strings.Join(got, ",") != "a,b,c" {
-		t.Fatalf("%v", got)
+		t.Fatalf("ожидалось a,b,c без дубликатов, получено %v", got)
 	}
 }
 
@@ -55,7 +55,7 @@ func TestTemplatesOnce_chatmlStopwords(t *testing.T) {
 	}
 
 	if !found {
-		t.Fatal("expected chatml preset to load presets/chatml.json stopwords")
+		t.Fatal("пресет chatml должен содержать стоп-слова из presets/chatml.json")
 	}
 }
 

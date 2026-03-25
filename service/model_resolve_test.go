@@ -8,11 +8,11 @@ import (
 
 func TestDisplayModelName(t *testing.T) {
 	if g := DisplayModelName("Qwen-7B.Q4.gguf"); g != "Qwen-7B.Q4" {
-		t.Fatalf("%q", g)
+		t.Fatalf("DisplayModelName: получено %q, ожидалось Qwen-7B.Q4", g)
 	}
 
 	if g := DisplayModelName("LOWER.GGUF"); g != "LOWER" {
-		t.Fatalf("%q", g)
+		t.Fatalf("DisplayModelName: получено %q, ожидалось LOWER", g)
 	}
 }
 
@@ -24,21 +24,21 @@ func TestResolveGGUFFile(t *testing.T) {
 
 	got, err := ResolveGGUFFile(dir, "MyModel-Q4")
 	if err != nil || got != "MyModel-Q4.gguf" {
-		t.Fatalf("got %q err %v", got, err)
+		t.Fatalf("ResolveGGUFFile: получено %q, ошибка %v", got, err)
 	}
 
 	got, err = ResolveGGUFFile(dir, "MyModel-Q4.gguf")
 	if err != nil || got != "MyModel-Q4.gguf" {
-		t.Fatalf("got %q err %v", got, err)
+		t.Fatalf("ResolveGGUFFile (с суффиксом .gguf): получено %q, ошибка %v", got, err)
 	}
 
 	got, err = ResolveGGUFFile(dir, "mymodel-q4")
 	if err != nil || got != "MyModel-Q4.gguf" {
-		t.Fatalf("got %q err %v", got, err)
+		t.Fatalf("ResolveGGUFFile (регистронезависимо): получено %q, ошибка %v", got, err)
 	}
 
 	if _, err := ResolveGGUFFile(dir, "missing"); err == nil {
-		t.Fatal("expected error")
+		t.Fatal("ожидалась ошибка для отсутствующей модели")
 	}
 }
 
@@ -52,6 +52,66 @@ func TestSortedDisplayModelNames(t *testing.T) {
 	}
 
 	if len(got) != 2 || got[0] != "a" || got[1] != "b" {
-		t.Fatalf("%v", got)
+		t.Fatalf("ожидался порядок [a b], получено %v", got)
+	}
+}
+
+func TestSplitModelRef(t *testing.T) {
+	n, tg := SplitModelRef("phi:q4")
+	if n != "phi" || tg != "q4" {
+		t.Fatalf("SplitModelRef: получено имя %q тег %q", n, tg)
+	}
+
+	n, tg = SplitModelRef("phi:latest")
+	if n != "phi" || tg != "latest" {
+		t.Fatalf("SplitModelRef (latest): получено имя %q тег %q", n, tg)
+	}
+
+	n, tg = SplitModelRef("org/model/file")
+	if n != "org/model/file" || tg != "" {
+		t.Fatalf("путь с / не должен делиться на имя и тег: %q %q", n, tg)
+	}
+}
+
+func TestResolveGGUFFile_tagRef(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "Phi-3-Q4.gguf"), []byte{0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := ResolveGGUFFile(dir, "Phi-3:Q4")
+	if err != nil || got != "Phi-3-Q4.gguf" {
+		t.Fatalf("ResolveGGUFFile с тегом: получено %q, ошибка %v", got, err)
+	}
+
+	if _, err := ResolveGGUFFile(dir, "Phi-3:missing"); err == nil {
+		t.Fatal("ожидалась ошибка для несуществующего тега")
+	}
+
+	_ = os.WriteFile(filepath.Join(dir, "Phi-3.gguf"), []byte{0}, 0o644)
+	if _, err := ResolveGGUFFile(dir, "Phi-3:missing"); err == nil {
+		t.Fatal("при запросе с тегом нельзя подставлять файл без тега")
+	}
+}
+
+func TestCatalogModelNames_tagAlias(t *testing.T) {
+	dir := t.TempDir()
+	_ = os.WriteFile(filepath.Join(dir, "Phi-3-Q4.gguf"), []byte{}, 0o644)
+	got, err := CatalogModelNames(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[string]bool{"Phi-3-Q4": false, "Phi-3:Q4": false}
+	for _, s := range got {
+		if _, ok := want[s]; ok {
+			want[s] = true
+		}
+	}
+
+	for k, v := range want {
+		if !v {
+			t.Errorf("в каталоге нет записи %q, каталог: %v", k, got)
+		}
 	}
 }

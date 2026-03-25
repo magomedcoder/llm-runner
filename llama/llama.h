@@ -29,7 +29,22 @@ void *load_model(
     bool numa,
     float rope_freq_base,
     float rope_freq_scale,
-    const char *lora, const char *lora_base
+    const char *lora, const char *lora_base,
+    const char *mmproj_path
+);
+
+const char *llama_mtmd_default_marker(void);
+
+bool llama_has_mtmd(void *state_ptr);
+
+int llama_predict_mtmd(
+    void *params_ptr,
+    void *state_ptr,
+    unsigned char **image_bufs,
+    size_t *image_lens,
+    int n_images,
+    char *result,
+    bool debug
 );
 
 int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings);

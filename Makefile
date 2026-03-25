@@ -6,10 +6,10 @@ deps:
 	$(MAKE) -C llama -f Makefile deps
 
 run-cpu:
-	go run -tags="llama" ./cmd/llm-runner
+	go run -tags="llama" ./cmd/llm-runner serve
 
 run-gpu:
-	go run -tags="llama,nvidia" ./cmd/llm-runner
+	go run -tags="llama,nvidia" ./cmd/llm-runner serve
 
 build-cpu:
 	@mkdir -p build

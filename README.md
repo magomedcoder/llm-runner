@@ -28,17 +28,15 @@ make build-cpu
 make build-gpu
 ```
 
-### Скачивание моделей с Hugging Face
-
 ```bash
-make build-download-model
+./build/llm-runner serve
 
-# Список доступных .gguf в репозитории
-./build/download-model -repo ... -list
+# Скачать .gguf с Hugging Face
+./build/llm-runner download --repo <org/model> --list
+./build/llm-runner download --repo <org/model> --file ....gguf
 
-# Скачать один файл
-./build/download-model -repo ... -file ...gguf
-
-# Скачать все .gguf из репозитория
-./build/download-model -repo ...
+# Клиент к запущенному раннеру
+./build/llm-runner remote ping
+./build/llm-runner remote models
+./build/llm-runner remote run --model mymodel --prompt "привет"
 ```

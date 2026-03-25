@@ -27,18 +27,19 @@ type AIChatSession struct {
 }
 
 type AIChatMessage struct {
-	Id               int64
-	SessionId        int64
-	Content          string
-	Role             AIChatMessageRole
-	AttachmentName   string
-	AttachmentFileId int64
-	ToolCallID       string
-	ToolName         string
-	ToolCallsJSON    string
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	DeletedAt        *time.Time
+	Id                int64
+	SessionId         int64
+	Content           string
+	Role              AIChatMessageRole
+	AttachmentName    string
+	AttachmentFileId  int64
+	AttachmentContent []byte
+	ToolCallID        string
+	ToolName          string
+	ToolCallsJSON     string
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	DeletedAt         *time.Time
 }
 
 func NewAIChatSession(userId int, title string, model string) *AIChatSession {
@@ -100,6 +101,9 @@ func AIMessageToProto(msg *AIChatMessage) *llmrunnerpb.ChatMessage {
 	if msg.AttachmentName != "" {
 		p.AttachmentName = &msg.AttachmentName
 	}
+	if len(msg.AttachmentContent) > 0 {
+		p.AttachmentContent = msg.AttachmentContent
+	}
 
 	if msg.ToolCallID != "" {
 		p.ToolCallId = &msg.ToolCallID
@@ -131,6 +135,9 @@ func AIMessageFromProto(proto *llmrunnerpb.ChatMessage, sessionID int64) *AIChat
 	}
 	if proto.AttachmentName != nil {
 		msg.AttachmentName = *proto.AttachmentName
+	}
+	if len(proto.AttachmentContent) > 0 {
+		msg.AttachmentContent = append([]byte(nil), proto.AttachmentContent...)
 	}
 
 	if proto.ToolCallId != nil {

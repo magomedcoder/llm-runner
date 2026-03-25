@@ -9,12 +9,12 @@ func TestLoadAllPresets_embeddedPresets(t *testing.T) {
 	}
 
 	if len(presets) < 5 {
-		t.Fatalf("expected several preset fingerprints, got %d", len(presets))
+		t.Fatalf("ожидалось несколько встроенных пресетов, получено %d", len(presets))
 	}
 
 	for _, p := range presets {
 		if len(p.Bytes) == 0 {
-			t.Fatalf("preset %q missing .gotmpl bytes", p.Name)
+			t.Fatalf("у пресета %q пустые байты шаблона .gotmpl", p.Name)
 		}
 	}
 }

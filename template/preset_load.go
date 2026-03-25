@@ -62,7 +62,7 @@ func loadPresetEntries() ([]*MatchedPreset, error) {
 	}
 
 	if len(out) == 0 {
-		return nil, errors.New("template: no presets with non-empty fingerprints in presets/*.json")
+		return nil, errors.New("пресеты: в presets/*.json нет записей с непустым полем fingerprint (отпечаток шаблона)")
 	}
 
 	return out, nil

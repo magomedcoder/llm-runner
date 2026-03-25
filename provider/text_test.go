@@ -23,12 +23,24 @@ func (m *mockTextBackend) CheckConnection(ctx context.Context) (bool, error) {
 	return true, nil
 }
 
+func (m *mockTextBackend) WarmDefaultModel(ctx context.Context, model string) error {
+	return nil
+}
+
 func (m *mockTextBackend) GetModels(ctx context.Context) ([]string, error) {
 	if m.getModels != nil {
 		return m.getModels(ctx)
 	}
 
 	return nil, nil
+}
+
+func (m *mockTextBackend) GetLoadedModel(ctx context.Context) (bool, string, string, error) {
+	return false, "", "", nil
+}
+
+func (m *mockTextBackend) UnloadModel(ctx context.Context) error {
+	return nil
 }
 
 func (m *mockTextBackend) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
@@ -65,11 +77,11 @@ func TestText_CheckConnection(t *testing.T) {
 	tp := NewText(backend)
 	ok, err := tp.CheckConnection(context.Background())
 	if err != nil {
-		t.Fatalf("CheckConnection: %v", err)
+		t.Fatalf("проверка соединения: %v", err)
 	}
 
 	if !ok {
-		t.Error("ожидалось true")
+		t.Error("ожидалось подключение (true)")
 	}
 }
 
@@ -82,11 +94,11 @@ func TestText_GetModels(t *testing.T) {
 	tp := NewText(backend)
 	models, err := tp.GetModels(context.Background())
 	if err != nil {
-		t.Fatalf("GetModels: %v", err)
+		t.Fatalf("список моделей: %v", err)
 	}
 
 	if len(models) != 1 || models[0] != "m1" {
-		t.Errorf("получено %v", models)
+		t.Errorf("ожидалась одна модель m1, получено %v", models)
 	}
 }
 

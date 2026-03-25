@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/magomedcoder/llm-runner/domain"
-	llama "github.com/magomedcoder/llm-runner/llama"
+	"github.com/magomedcoder/llm-runner/llama"
 	"github.com/magomedcoder/llm-runner/template"
 )
 
@@ -20,6 +20,7 @@ const defaultChunkSize = 128
 type LlamaService struct {
 	modelsDir        string
 	currentModelName string
+	mmprojPathConfig string
 	chunkSize        int
 	predictOpts      []llama.PredictOption
 	mu               sync.RWMutex
@@ -67,6 +68,12 @@ func WithEmbeddings(enable bool) LlamaOption {
 	}
 }
 
+func WithMmprojPath(path string) LlamaOption {
+	return func(s *LlamaService) {
+		s.mmprojPathConfig = strings.TrimSpace(path)
+	}
+}
+
 func NewLlamaService(modelPath string, opts ...LlamaOption) *LlamaService {
 	modelsDir := modelPath
 	if modelPath != "" {
@@ -92,7 +99,7 @@ func NewLlamaService(modelPath string, opts ...LlamaOption) *LlamaService {
 	return s
 }
 
-func (s *LlamaService) applyModelChatTemplate(norm []*domain.AIChatMessage, addGen bool) (string, error) {
+func (s *LlamaService) applyModelChatTemplate(norm []*domain.AIChatMessage, addGen bool, visionInject bool, mediaMarker string, chatTemplateOverride string) (string, error) {
 	if s.model == nil {
 		return "", fmt.Errorf("llama: модель не загружена")
 	}
@@ -101,13 +108,13 @@ func (s *LlamaService) applyModelChatTemplate(norm []*domain.AIChatMessage, addG
 	contents := make([]string, len(norm))
 	for i, m := range norm {
 		roles[i] = ChatRoleString(m.Role)
-		contents[i] = FormatContentForBuiltinChatTemplate(m)
+		contents[i] = FormatContentForChatTemplateWithVision(m, visionInject, mediaMarker)
 	}
 
-	return s.model.ApplyChatTemplate("", roles, contents, addGen)
+	return s.model.ApplyChatTemplate(strings.TrimSpace(chatTemplateOverride), roles, contents, addGen)
 }
 
-func (s *LlamaService) resolveChatPrompt(norm []*domain.AIChatMessage, genParams *domain.GenerationParams) (prompt string, presetStops []string, err error) {
+func (s *LlamaService) resolveChatPrompt(norm []*domain.AIChatMessage, genParams *domain.GenerationParams, visionInject bool, mediaMarker string, chatTemplateOverride string) (prompt string, presetStops []string, err error) {
 	jinja := strings.TrimSpace(s.model.GetChatTemplate(""))
 	var matched *template.MatchedPreset
 	if jinja != "" {
@@ -117,11 +124,11 @@ func (s *LlamaService) resolveChatPrompt(norm []*domain.AIChatMessage, genParams
 		}
 	}
 
-	if p, e := s.applyModelChatTemplate(norm, true); e == nil && p != "" {
+	if p, e := s.applyModelChatTemplate(norm, true, visionInject, mediaMarker, chatTemplateOverride); e == nil && p != "" {
 		return p, presetStops, nil
 	}
 
-	if matched != nil {
+	if matched != nil && !visionInject && strings.TrimSpace(chatTemplateOverride) == "" {
 		text, e := RenderMatchedPreset(matched, norm, genParams)
 		if e != nil {
 			return "", presetStops, fmt.Errorf("llama: пресет %q: %w", matched.Name, e)
@@ -132,29 +139,34 @@ func (s *LlamaService) resolveChatPrompt(norm []*domain.AIChatMessage, genParams
 		}
 	}
 
-	return fallbackPlainChatPrompt(norm, genParams), presetStops, nil
+	return fallbackPlainChatPrompt(norm, genParams, visionInject, mediaMarker), presetStops, nil
 }
 
-func (s *LlamaService) ensureModel(modelName string) error {
+func (s *LlamaService) ensureModel(modelName string) (*ModelYAML, string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	if s.modelsDir == "" {
-		return fmt.Errorf("llama: путь к папке с моделями не задан")
+		return nil, "", fmt.Errorf("llama: путь к папке с моделями не задан")
 	}
 
 	if strings.TrimSpace(modelName) == "" {
-		return fmt.Errorf("llama: укажите модель (доступные: %s)", strings.Join(s.modelDisplayNamesLocked(), ", "))
+		return nil, "", fmt.Errorf("llama: укажите модель (доступные: %s)", strings.Join(s.modelDisplayNamesLocked(), ", "))
 	}
 
-	resolved, err := ResolveGGUFFile(s.modelsDir, modelName)
+	resolved, yamlCfg, err := ResolveModelForInference(s.modelsDir, modelName)
 	if err != nil {
-		return fmt.Errorf("llama: %w (доступные: %s)", err, strings.Join(s.modelDisplayNamesLocked(), ", "))
+		return nil, "", fmt.Errorf("llama: %w (доступные: %s)", err, strings.Join(s.modelDisplayNamesLocked(), ", "))
+	}
+
+	mmprojPath, err := ResolveMmprojPath(s.modelsDir, resolved, s.mmprojPathConfig)
+	if err != nil {
+		return nil, "", fmt.Errorf("llama: %w", err)
 	}
 
 	fullPath := filepath.Join(s.modelsDir, resolved)
 	if s.model != nil && s.currentModelName == resolved {
-		return nil
+		return yamlCfg, mmprojPath, nil
 	}
 
 	if s.model != nil {
@@ -172,15 +184,18 @@ func (s *LlamaService) ensureModel(modelName string) error {
 		nCtx = 4096
 	}
 	modelOpts = append(modelOpts, llama.SetContext(nCtx))
+	if strings.TrimSpace(mmprojPath) != "" {
+		modelOpts = append(modelOpts, llama.WithMmproj(mmprojPath))
+	}
 
 	m, err := llama.New(fullPath, modelOpts...)
 	if err != nil {
-		return fmt.Errorf("llama: не удалось загрузить модель %q: %w", DisplayModelName(resolved), err)
+		return nil, "", fmt.Errorf("llama: не удалось загрузить модель %q: %w", DisplayModelName(resolved), err)
 	}
 
 	s.model = m
 	s.currentModelName = resolved
-	return nil
+	return yamlCfg, mmprojPath, nil
 }
 
 func (s *LlamaService) modelDisplayNamesLocked() []string {
@@ -192,8 +207,16 @@ func (s *LlamaService) modelDisplayNamesLocked() []string {
 	if err != nil {
 		return nil
 	}
-
 	return names
+}
+
+func (s *LlamaService) WarmDefaultModel(ctx context.Context, model string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	_, _, err := s.ensureModel(strings.TrimSpace(model))
+	return err
 }
 
 func (s *LlamaService) CheckConnection(ctx context.Context) (bool, error) {
@@ -217,17 +240,58 @@ func (s *LlamaService) GetModels(ctx context.Context) ([]string, error) {
 	return out, nil
 }
 
+func (s *LlamaService) GetLoadedModel(ctx context.Context) (loaded bool, ggufBasename, displayName string, err error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.model == nil || strings.TrimSpace(s.currentModelName) == "" {
+		return false, "", "", nil
+	}
+
+	return true, s.currentModelName, DisplayModelName(s.currentModelName), nil
+}
+
+func (s *LlamaService) UnloadModel(ctx context.Context) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.model != nil {
+		s.model.Free()
+		s.model = nil
+		s.currentModelName = ""
+	}
+
+	return nil
+}
+
 func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
+	yamlCfg, mmprojPath, err := s.ensureModel(model)
+	if err != nil {
+		return nil, err
+	}
+
 	norm := NormalizeChatMessages(messages)
+	norm = ApplyModelYAMLSystem(norm, yamlCfg)
 	if len(norm) == 0 {
 		return nil, fmt.Errorf("llama: пустой список сообщений (нет текста content)")
 	}
 
-	if err := s.ensureModel(model); err != nil {
+	if err := errIfVisionAttachments(norm, mmprojPath, s.currentModelName, s.modelsDir); err != nil {
 		return nil, err
 	}
 
-	prompt, presetStops, err := s.resolveChatPrompt(norm, genParams)
+	hasVision := MessagesHaveVisionAttachments(norm)
+	if hasVision && !s.model.HasMTMD() {
+		return nil, fmt.Errorf("llama: vision-запрос, но mmproj не загружен (проверьте путь и сборку с libmtmd)")
+	}
+
+	genMerged := MergeGenParams(genParams, yamlCfg)
+
+	visionInject := hasVision
+	mediaMarker := llama.MTMDDefaultMarker()
+	chatTmpl := ""
+	if yamlCfg != nil {
+		chatTmpl = yamlCfg.Template
+	}
+	prompt, presetStops, err := s.resolveChatPrompt(norm, genMerged, visionInject, mediaMarker, chatTmpl)
 	if err != nil {
 		return nil, err
 	}
@@ -246,27 +310,27 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 		defer close(out)
 		opts := make([]llama.PredictOption, 0, len(s.predictOpts)+6)
 		opts = append(opts, s.predictOpts...)
-		if genParams != nil {
-			if genParams.Temperature != nil {
-				opts = append(opts, llama.SetTemperature(*genParams.Temperature))
+		if genMerged != nil {
+			if genMerged.Temperature != nil {
+				opts = append(opts, llama.SetTemperature(*genMerged.Temperature))
 			}
 
-			if genParams.MaxTokens != nil && *genParams.MaxTokens > 0 {
-				opts = append(opts, llama.SetTokens(int(*genParams.MaxTokens)))
+			if genMerged.MaxTokens != nil && *genMerged.MaxTokens > 0 {
+				opts = append(opts, llama.SetTokens(int(*genMerged.MaxTokens)))
 			}
 
-			if genParams.TopK != nil && *genParams.TopK > 0 {
-				opts = append(opts, llama.SetTopK(int(*genParams.TopK)))
+			if genMerged.TopK != nil && *genMerged.TopK > 0 {
+				opts = append(opts, llama.SetTopK(int(*genMerged.TopK)))
 			}
 
-			if genParams.TopP != nil {
-				opts = append(opts, llama.SetTopP(*genParams.TopP))
+			if genMerged.TopP != nil {
+				opts = append(opts, llama.SetTopP(*genMerged.TopP))
 			}
 
-			if genParams.ResponseFormat != nil && genParams.ResponseFormat.Type == "json_object" {
+			if genMerged.ResponseFormat != nil && genMerged.ResponseFormat.Type == "json_object" {
 				grammar := DefaultJSONObjectGrammar
-				if genParams.ResponseFormat.Schema != nil && *genParams.ResponseFormat.Schema != "" {
-					grammar = *genParams.ResponseFormat.Schema
+				if genMerged.ResponseFormat.Schema != nil && *genMerged.ResponseFormat.Schema != "" {
+					grammar = *genMerged.ResponseFormat.Schema
 				}
 
 				if grammar != "" {
@@ -303,8 +367,14 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 				return true
 			}
 		}))
+		imgs := CollectVisionImageBytes(norm)
 		s.mu.Lock()
-		_, err := s.model.Predict(prompt, opts...)
+		var err error
+		if len(imgs) > 0 {
+			_, err = s.model.PredictMTMD(prompt, imgs, opts...)
+		} else {
+			_, err = s.model.Predict(prompt, opts...)
+		}
 		s.mu.Unlock()
 		streamFilter.flush()
 		if err != nil {
@@ -315,7 +385,7 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 }
 
 func (s *LlamaService) Embed(ctx context.Context, model string, text string) ([]float32, error) {
-	if err := s.ensureModel(model); err != nil {
+	if _, _, err := s.ensureModel(model); err != nil {
 		return nil, err
 	}
 

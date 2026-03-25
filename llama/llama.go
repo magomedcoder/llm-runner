@@ -34,6 +34,17 @@ func New(model string, opts ...ModelOption) (*LLama, error) {
 	loraAdapter := C.CString(mo.LoraAdapter)
 	defer C.free(unsafe.Pointer(loraAdapter))
 
+	mainGPU := C.CString(mo.MainGPU)
+	defer C.free(unsafe.Pointer(mainGPU))
+	tensorSplit := C.CString(mo.TensorSplit)
+	defer C.free(unsafe.Pointer(tensorSplit))
+
+	var mmprojArg *C.char
+	if mp := strings.TrimSpace(mo.MmprojPath); mp != "" {
+		mmprojArg = C.CString(mp)
+		defer C.free(unsafe.Pointer(mmprojArg))
+	}
+
 	result := C.load_model(
 		modelPath,
 		C.int(mo.ContextSize),
@@ -45,12 +56,13 @@ func New(model string, opts ...ModelOption) (*LLama, error) {
 		C.bool(mo.LowVRAM),
 		C.int(mo.NGPULayers),
 		C.int(mo.NBatch),
-		C.CString(mo.MainGPU),
-		C.CString(mo.TensorSplit),
+		mainGPU,
+		tensorSplit,
 		C.bool(mo.NUMA),
 		C.float(mo.FreqRopeBase),
 		C.float(mo.FreqRopeScale),
 		loraAdapter, loraBase,
+		mmprojArg,
 	)
 
 	if result == nil {
@@ -430,6 +442,149 @@ func (l *LLama) Predict(text string, opts ...PredictOption) (string, error) {
 
 	res = strings.TrimPrefix(res, " ")
 	res = strings.TrimPrefix(res, text)
+	res = strings.TrimPrefix(res, "\n")
+
+	for _, s := range po.StopPrompts {
+		if s == "" {
+			continue
+		}
+		for strings.HasSuffix(res, s) {
+			res = strings.TrimSuffix(res, s)
+		}
+	}
+
+	C.llama_free_params(params)
+
+	if po.TokenCallback != nil {
+		setCallback(l.state, nil)
+	}
+
+	return res, nil
+}
+
+func MTMDDefaultMarker() string {
+	return C.GoString(C.llama_mtmd_default_marker())
+}
+
+func (l *LLama) HasMTMD() bool {
+	if l == nil || l.state == nil {
+		return false
+	}
+
+	return bool(C.llama_has_mtmd(l.state))
+}
+
+func (l *LLama) PredictMTMD(text string, images [][]byte, opts ...PredictOption) (string, error) {
+	if len(images) == 0 {
+		return l.Predict(text, opts...)
+	}
+	po := NewPredictOptions(opts...)
+
+	if po.TokenCallback != nil {
+		setCallback(l.state, po.TokenCallback)
+	}
+
+	input := C.CString(text)
+	if po.Tokens == 0 {
+		po.Tokens = 99999999
+	}
+	out := make([]byte, po.Tokens)
+
+	reverseCount := len(po.StopPrompts)
+	reversePrompt := make([]*C.char, reverseCount)
+	var pass **C.char
+	for i, s := range po.StopPrompts {
+		cs := C.CString(s)
+		reversePrompt[i] = cs
+		pass = &reversePrompt[0]
+	}
+
+	ptrSlice := make([]*C.uchar, len(images))
+	lenSlice := make([]C.size_t, len(images))
+	for i, img := range images {
+		if len(img) == 0 {
+			for j := 0; j < i; j++ {
+				C.free(unsafe.Pointer(ptrSlice[j]))
+			}
+			return "", fmt.Errorf("llama: пустые байты изображения %d", i)
+		}
+
+		cpy := C.CBytes(img)
+		ptrSlice[i] = (*C.uchar)(cpy)
+		lenSlice[i] = C.size_t(len(img))
+	}
+
+	defer func() {
+		for _, p := range ptrSlice {
+			if p != nil {
+				C.free(unsafe.Pointer(p))
+			}
+		}
+	}()
+
+	params := C.llama_allocate_params(
+		input,
+		C.int(po.Seed),
+		C.int(po.Threads),
+		C.int(po.Tokens),
+		C.int(po.TopK),
+		C.float(po.TopP),
+		C.float(po.MinP),
+		C.float(po.Temperature),
+		C.float(po.Penalty),
+		C.int(po.Repeat),
+		C.bool(po.IgnoreEOS),
+		C.bool(po.F16KV),
+		C.int(po.Batch),
+		C.int(po.NKeep),
+		pass,
+		C.int(reverseCount),
+		C.float(po.TailFreeSamplingZ),
+		C.float(po.TypicalP),
+		C.float(po.FrequencyPenalty),
+		C.float(po.PresencePenalty),
+		C.int(po.Mirostat),
+		C.float(po.MirostatETA),
+		C.float(po.MirostatTAU),
+		C.bool(po.PenalizeNL),
+		C.CString(po.LogitBias),
+		C.CString(po.PathPromptCache),
+		C.bool(po.PromptCacheAll),
+		C.bool(po.MLock),
+		C.bool(po.MMap),
+		C.CString(po.MainGPU),
+		C.CString(po.TensorSplit),
+		C.bool(po.PromptCacheRO),
+		C.CString(po.Grammar),
+		C.float(po.RopeFreqBase),
+		C.float(po.RopeFreqScale),
+		C.int(po.NDraft),
+		C.float(po.XTCProbability),
+		C.float(po.XTCThreshold),
+		C.float(po.DRYMultiplier),
+		C.float(po.DRYBase),
+		C.int(po.DRYAllowedLength),
+		C.int(po.DRYPenaltyLastN),
+		C.float(po.TopNSigma),
+	)
+	ret := C.llama_predict_mtmd(params, l.state,
+		(**C.uchar)(unsafe.Pointer(&ptrSlice[0])),
+		(*C.size_t)(unsafe.Pointer(&lenSlice[0])),
+		C.int(len(images)),
+		(*C.char)(unsafe.Pointer(&out[0])),
+		C.bool(po.DebugMode),
+	)
+	if ret != 0 {
+		C.llama_free_params(params)
+		if po.TokenCallback != nil {
+			setCallback(l.state, nil)
+		}
+		return "", fmt.Errorf("ошибка vision-вывода (mtmd)")
+	}
+
+	res := C.GoString((*C.char)(unsafe.Pointer(&out[0])))
+
+	res = strings.TrimPrefix(res, " ")
 	res = strings.TrimPrefix(res, "\n")
 
 	for _, s := range po.StopPrompts {

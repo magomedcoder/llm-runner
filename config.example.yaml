@@ -1,12 +1,23 @@
-core_addr: "127.0.0.1:50051"
-listen_addr: "127.0.0.1:50052"
+listen:
+  host: "127.0.0.1"
+  port: 50052
+
+core:
+  host: "127.0.0.1"
+  port: 50051
+
 registration_token: ""
 
-log:
-  level: "debug"
+log_level: "debug"
 
 model_path: "./models"
+
+# mmproj_path: ""
+
 default_model: ""
+
 max_context_tokens: 4096
 
 max_concurrent_generations: 0
+
+model_retention: keep

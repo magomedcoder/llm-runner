@@ -21,11 +21,11 @@ func TestBuildChatPromptGotmpl_chatml(t *testing.T) {
 	}
 
 	if !strings.Contains(p, "<|im_start|>user") || !strings.Contains(p, "Привет") {
-		t.Fatalf("unexpected prompt: %q", p)
+		t.Fatalf("неожиданный промпт: %q", p)
 	}
 
 	if !strings.Contains(p, "<|im_start|>assistant") {
-		t.Fatalf("missing assistant header: %q", p)
+		t.Fatalf("нет заголовка assistant в промпте: %q", p)
 	}
 }
 
@@ -57,7 +57,7 @@ func TestRenderMatchedPreset_toolsOptional_chatmlUnchanged(t *testing.T) {
 	}
 
 	if base != withTools {
-		t.Fatalf("chatml.gotmpl must ignore .Tools; base=%q withTools=%q", base, withTools)
+		t.Fatalf("шаблон chatml не должен меняться от .Tools; без=%q с инструментами=%q", base, withTools)
 	}
 }
 
@@ -82,6 +82,6 @@ func TestRenderMatchedPreset_sameAsBuildChatPromptGotmpl(t *testing.T) {
 	}
 
 	if a != b {
-		t.Fatalf("mismatch\na=%q\nb=%q", a, b)
+		t.Fatalf("расхождение промптов\na=%q\nb=%q", a, b)
 	}
 }

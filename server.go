@@ -2,14 +2,15 @@ package runner
 
 import (
 	"context"
+	"strings"
+	"time"
+
 	"github.com/magomedcoder/llm-runner/domain"
 	"github.com/magomedcoder/llm-runner/gpu"
 	"github.com/magomedcoder/llm-runner/pb/llmrunnerpb"
 	"github.com/magomedcoder/llm-runner/provider"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"strings"
-	"time"
 )
 
 func mapGenerationParamsFromProto(in *llmrunnerpb.GenerationParams) *domain.GenerationParams {
@@ -76,9 +77,11 @@ type Server struct {
 	inferenceMetrics *InferenceMetrics
 	sem              chan struct{}
 	defaultModel     string
+	unloadAfterRPC   bool
+	modelsDir        string
 }
 
-func NewServer(textProvider provider.TextProvider, gpuCollector gpu.Collector, maxConcurrentGenerations int, defaultModel string) *Server {
+func NewServer(textProvider provider.TextProvider, gpuCollector gpu.Collector, maxConcurrentGenerations int, defaultModel string, unloadAfterRPC bool, modelsDir string) *Server {
 	if gpuCollector == nil {
 		gpuCollector = gpu.NewCollector()
 	}
@@ -92,7 +95,17 @@ func NewServer(textProvider provider.TextProvider, gpuCollector gpu.Collector, m
 		inferenceMetrics: NewInferenceMetrics(),
 		sem:              sem,
 		defaultModel:     strings.TrimSpace(defaultModel),
+		unloadAfterRPC:   unloadAfterRPC,
+		modelsDir:        strings.TrimSpace(modelsDir),
 	}
+}
+
+func (s *Server) maybeUnloadAfterRPC() {
+	if !s.unloadAfterRPC || s.textProvider == nil {
+		return
+	}
+
+	_ = s.textProvider.UnloadModel(context.Background())
 }
 
 func (s *Server) CheckConnection(ctx context.Context, _ *llmrunnerpb.Empty) (*llmrunnerpb.ConnectionResponse, error) {
@@ -159,6 +172,7 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 
 	ch, err := s.textProvider.SendMessage(ctx, sessionID, model, messages, stopSequences, genParams)
 	if err != nil {
+		s.maybeUnloadAfterRPC()
 		return status.Errorf(codes.Internal, "ошибка генерации: %v", err)
 	}
 
@@ -181,10 +195,16 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 	}
 
 	if !hasContent {
+		s.maybeUnloadAfterRPC()
 		return status.Error(codes.Internal, "модель не вернула ответ")
 	}
 
-	return stream.Send(&llmrunnerpb.ChatResponse{Done: true})
+	if err := stream.Send(&llmrunnerpb.ChatResponse{Done: true}); err != nil {
+		return err
+	}
+	s.maybeUnloadAfterRPC()
+
+	return nil
 }
 
 func (s *Server) Embed(ctx context.Context, req *llmrunnerpb.EmbedRequest) (*llmrunnerpb.EmbedResponse, error) {
@@ -214,6 +234,8 @@ func (s *Server) Embed(ctx context.Context, req *llmrunnerpb.EmbedRequest) (*llm
 			return nil, ctx.Err()
 		}
 	}
+
+	defer s.maybeUnloadAfterRPC()
 
 	vec, err := s.textProvider.Embed(ctx, model, text)
 	if err != nil {
@@ -247,6 +269,8 @@ func (s *Server) EmbedBatch(ctx context.Context, req *llmrunnerpb.EmbedBatchRequ
 	if model == "" {
 		model = s.defaultModel
 	}
+
+	defer s.maybeUnloadAfterRPC()
 
 	out := &llmrunnerpb.EmbedBatchResponse{
 		Embeddings: make([]*llmrunnerpb.Embedding, 0, len(texts)),
@@ -310,4 +334,33 @@ func (s *Server) GetServerInfo(ctx context.Context, _ *llmrunnerpb.Empty) (*llmr
 	}
 
 	return out, nil
+}
+
+func (s *Server) GetLoadedModel(ctx context.Context, _ *llmrunnerpb.Empty) (*llmrunnerpb.GetLoadedModelResponse, error) {
+	if s.textProvider == nil {
+		return &llmrunnerpb.GetLoadedModelResponse{}, nil
+	}
+
+	loaded, base, disp, err := s.textProvider.GetLoadedModel(ctx)
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "GetLoadedModel: %v", err)
+	}
+
+	return &llmrunnerpb.GetLoadedModelResponse{
+		Loaded:       loaded,
+		GgufBasename: base,
+		DisplayName:  disp,
+	}, nil
+}
+
+func (s *Server) UnloadModel(ctx context.Context, _ *llmrunnerpb.Empty) (*llmrunnerpb.Empty, error) {
+	if s.textProvider == nil {
+		return &llmrunnerpb.Empty{}, nil
+	}
+
+	if err := s.textProvider.UnloadModel(ctx); err != nil {
+		return nil, status.Errorf(codes.Internal, "UnloadModel: %v", err)
+	}
+
+	return &llmrunnerpb.Empty{}, nil
 }

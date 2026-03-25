@@ -22,6 +22,10 @@ service LLMRunnerService {
   rpc Embed(EmbedRequest) returns (EmbedResponse);
 
   rpc EmbedBatch(EmbedBatchRequest) returns (EmbedBatchResponse);
+
+  rpc GetLoadedModel(Empty) returns (GetLoadedModelResponse);
+
+  rpc UnloadModel(Empty) returns (Empty);
 }
 
 message Empty {}
@@ -134,4 +138,10 @@ message Embedding {
 
 message EmbedBatchResponse {
   repeated Embedding embeddings = 1;
+}
+
+message GetLoadedModelResponse {
+  bool loaded = 1;
+  string gguf_basename = 2;
+  string display_name = 3;
 }

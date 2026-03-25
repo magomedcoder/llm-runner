@@ -29,7 +29,7 @@ func TestNewPool_withAddresses(t *testing.T) {
 	}
 
 	if !p.HasActiveRunners() {
-		t.Error("ожидалось HasActiveRunners true")
+		t.Error("ожидалось наличие активных раннеров")
 	}
 }
 
@@ -93,7 +93,7 @@ func TestPool_CheckConnection_noRunners(t *testing.T) {
 	}
 
 	if ok {
-		t.Error("ожидалось false")
+		t.Error("ожидалось ok == false при отсутствии раннеров")
 	}
 }
 

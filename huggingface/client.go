@@ -1,6 +1,7 @@
 package huggingface
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -42,9 +43,13 @@ func NewClient(token string) *Client {
 	}
 }
 
-func (c *Client) ModelInfo(repoID string) (*ModelInfo, error) {
+func (c *Client) ModelInfo(ctx context.Context, repoID string) (*ModelInfo, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	url := fmt.Sprintf("%s/api/models/%s", c.baseURL, repoID)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -80,12 +85,17 @@ func (info *ModelInfo) GGFFFilenames() []string {
 	return out
 }
 
-func (c *Client) Download(repoID, revision, filename string, w io.Writer) (int64, error) {
+func (c *Client) Download(ctx context.Context, repoID, revision, filename string, w io.Writer) (int64, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	if revision == "" {
 		revision = "main"
 	}
+
 	url := fmt.Sprintf("%s/%s/resolve/%s/%s", c.baseURL, repoID, revision, filename)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return 0, err
 	}

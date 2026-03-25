@@ -1,6 +1,10 @@
 package domain
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/magomedcoder/llm-runner/pb/llmrunnerpb"
+)
 
 func TestFromProtoRole_ToProtoRole(t *testing.T) {
 	tests := []struct {
@@ -24,7 +28,7 @@ func TestFromProtoRole_ToProtoRole(t *testing.T) {
 			if (tt.proto == "unknown" || tt.proto == "") && back == "user" {
 				continue
 			}
-			t.Errorf("ToProtoRole(FromProtoRole(%q)) = %q", tt.proto, back)
+			t.Errorf("ToProtoRole(FromProtoRole(%q)) = %q, неожиданное значение", tt.proto, back)
 		}
 	}
 }
@@ -35,7 +39,7 @@ func TestMessage_roleAndContent(t *testing.T) {
 		Role:    AIChatMessageRoleUser,
 	}
 	if m.Role != AIChatMessageRoleUser || m.Content != "hi" {
-		t.Errorf("message fields: %+v", m)
+		t.Errorf("поля сообщения: %+v", m)
 	}
 }
 
@@ -57,5 +61,26 @@ func TestNewChatSession(t *testing.T) {
 	s := NewAIChatSession(1, "title", "model1")
 	if s.UserId != 1 || s.Title != "title" || s.Model != "model1" {
 		t.Errorf("NewChatSession: неверные поля %+v", s)
+	}
+}
+
+func TestAIMessageFromProto_attachmentContent(t *testing.T) {
+	n := "pic.png"
+	p := &llmrunnerpb.ChatMessage{
+		Role:              "user",
+		Content:           "что на картинке",
+		CreatedAt:         1,
+		AttachmentName:    &n,
+		AttachmentContent: []byte{0x89, 0x50},
+	}
+
+	m := AIMessageFromProto(p, 7)
+	if m.AttachmentName != n || string(m.AttachmentContent) != string(p.AttachmentContent) {
+		t.Fatalf("из proto: %+v", m)
+	}
+
+	p2 := AIMessageToProto(m)
+	if p2.GetAttachmentName() != n || string(p2.GetAttachmentContent()) != string(p.AttachmentContent) {
+		t.Fatalf("в proto: %+v", p2)
 	}
 }

@@ -75,7 +75,7 @@ func Named(modelChatTemplateJinja string) (*MatchedPreset, error) {
 		return nil, err
 	}
 	if len(templates) == 0 {
-		return nil, errors.New("template: empty preset list")
+		return nil, errors.New("пресеты: список пуст (нет загруженных presets/*.json или все пресеты отфильтрованы)")
 	}
 
 	var best *MatchedPreset
@@ -451,17 +451,17 @@ func Identifiers(n parse.Node) ([]string, error) {
 		return names, nil
 	case *parse.TemplateNode:
 		if n.Pipe == nil {
-			return nil, errors.New("undefined template specified")
+			return nil, errors.New("шаблон Go: в узле Template не задан pipe (некорректная разметка шаблона)")
 		}
 		return Identifiers(n.Pipe)
 	case *parse.ActionNode:
 		if n.Pipe == nil {
-			return nil, errors.New("undefined action in template")
+			return nil, errors.New("шаблон Go: в узле Action не задан pipe (некорректная разметка шаблона)")
 		}
 		return Identifiers(n.Pipe)
 	case *parse.BranchNode:
 		if n.Pipe == nil {
-			return nil, errors.New("undefined branch")
+			return nil, errors.New("шаблон Go: в узле ветвления (if/range) не задан pipe (некорректная разметка шаблона)")
 		}
 		names, err := Identifiers(n.Pipe)
 		if err != nil {

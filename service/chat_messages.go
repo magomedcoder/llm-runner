@@ -11,15 +11,23 @@ func messageHasPayload(m *domain.AIChatMessage) bool {
 	if m == nil {
 		return false
 	}
+
+	if len(m.AttachmentContent) > 0 {
+		return true
+	}
+
 	if strings.TrimSpace(m.Content) != "" {
 		return true
 	}
+
 	if m.Role == domain.AIChatMessageRoleAssistant && strings.TrimSpace(m.ToolCallsJSON) != "" {
 		return true
 	}
+
 	if m.Role == domain.AIChatMessageRoleTool && strings.TrimSpace(m.ToolCallID) != "" {
 		return true
 	}
+
 	return false
 }
 
@@ -52,6 +60,44 @@ func FormatContentForBuiltinChatTemplate(m *domain.AIChatMessage) string {
 	}
 
 	return c
+}
+
+func MessagesHaveVisionAttachments(messages []*domain.AIChatMessage) bool {
+	for _, m := range messages {
+		if m != nil && len(m.AttachmentContent) > 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
+func CollectVisionImageBytes(messages []*domain.AIChatMessage) [][]byte {
+	var out [][]byte
+	for _, m := range messages {
+		if m != nil && len(m.AttachmentContent) > 0 {
+			out = append(out, m.AttachmentContent)
+		}
+	}
+
+	return out
+}
+
+func FormatContentForChatTemplateWithVision(m *domain.AIChatMessage, inject bool, mediaMarker string) string {
+	base := FormatContentForBuiltinChatTemplate(m)
+	if !inject || m == nil || len(m.AttachmentContent) == 0 {
+		return base
+	}
+
+	if strings.TrimSpace(mediaMarker) == "" {
+		return base
+	}
+
+	if strings.Contains(base, mediaMarker) {
+		return base
+	}
+
+	return mediaMarker + base
 }
 
 func NormalizeChatMessages(messages []*domain.AIChatMessage) []*domain.AIChatMessage {
@@ -123,7 +169,7 @@ func MergeStopSequences(client []string, preset []string) []string {
 	return out
 }
 
-func fallbackPlainChatPrompt(messages []*domain.AIChatMessage, genParams *domain.GenerationParams) string {
+func fallbackPlainChatPrompt(messages []*domain.AIChatMessage, genParams *domain.GenerationParams, visionInject bool, mediaMarker string) string {
 	var b strings.Builder
 	for _, m := range messages {
 		if m == nil {
@@ -156,11 +202,7 @@ func fallbackPlainChatPrompt(messages []*domain.AIChatMessage, genParams *domain
 				b.WriteString("] ")
 			}
 		}
-		b.WriteString(m.Content)
-		if m.Role == domain.AIChatMessageRoleAssistant && strings.TrimSpace(m.ToolCallsJSON) != "" {
-			b.WriteString(" [tool_calls]: ")
-			b.WriteString(m.ToolCallsJSON)
-		}
+		b.WriteString(FormatContentForChatTemplateWithVision(m, visionInject, mediaMarker))
 		b.WriteString("\n")
 	}
 

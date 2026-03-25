@@ -3,6 +3,8 @@
 #include "sampling.h"
 
 #include "llama.h"
+#include "tools/mtmd/mtmd.h"
+#include "tools/mtmd/mtmd-helper.h"
 
 #include <cassert>
 #include <cinttypes>
@@ -21,6 +23,7 @@
 struct llama_binding_state {
     llama_model *model;
     llama_context *ctx;
+    mtmd_context *mtmd;
 };
 
 struct binding_params {
@@ -110,84 +113,7 @@ static std::string token_to_piece(const llama_vocab *vocab, llama_token token, b
     return result;
 }
 
-int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings) {
-    binding_params *params_p = (binding_params *) params_ptr;
-    llama_binding_state *state = (llama_binding_state *) state_pr;
-    llama_context *ctx = state->ctx;
-    llama_model *model = state->model;
-    const llama_vocab *vocab = llama_model_get_vocab(model);
-
-    bool add_bos = llama_vocab_get_add_bos(vocab);
-    std::vector <llama_token> tokens = tokenize_prompt(vocab, params_p->prompt, add_bos);
-
-    if (tokens.empty()) {
-        fprintf(stderr, "%s: ошибка: промпт пуст\n", __func__);
-        return 1;
-    }
-
-    llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
-
-    if (llama_decode(ctx, batch) != 0) {
-        fprintf(stderr, "%s: не удалось выполнить декодирование\n", __func__);
-        return 1;
-    }
-
-    const int n_embd = llama_model_n_embd(model);
-    const float *embeddings = llama_get_embeddings(ctx);
-
-    if (embeddings == nullptr) {
-        fprintf(stderr, "%s: эмбеддинги недоступны\n", __func__);
-        return 1;
-    }
-
-    for (int i = 0; i < n_embd; i++) {
-        res_embeddings[i] = embeddings[i];
-    }
-
-    return 0;
-}
-
-int get_token_embeddings(void *params_ptr, void *state_pr, int *tokens, int tokenSize, float *res_embeddings) {
-    binding_params *params_p = (binding_params *) params_ptr;
-    llama_binding_state *state = (llama_binding_state *) state_pr;
-    llama_model *model = state->model;
-    const llama_vocab *vocab = llama_model_get_vocab(model);
-
-    std::string prompt;
-    for (int i = 0; i < tokenSize; i++) {
-        prompt += token_to_piece(vocab, tokens[i]);
-    }
-    params_p->prompt = prompt;
-
-    return get_embeddings(params_ptr, state_pr, res_embeddings);
-}
-
-int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug) {
-    binding_params *params_p = (binding_params *) params_ptr;
-    llama_binding_state *state = (llama_binding_state *) state_pr;
-    llama_context *ctx = state->ctx;
-    llama_model *model = state->model;
-    const llama_vocab *vocab = llama_model_get_vocab(model);
-
-    const int n_ctx = llama_n_ctx(ctx);
-
-    if (static_cast<uint32_t>(params_p->seed) != LLAMA_DEFAULT_SEED) {
-        (void)0;
-    }
-
-    bool add_bos = llama_vocab_get_add_bos(vocab);
-    std::vector <llama_token> embd_inp = tokenize_prompt(vocab, params_p->prompt, add_bos);
-
-    if (embd_inp.empty()) {
-        embd_inp.push_back(llama_vocab_bos(vocab));
-    }
-
-    if ((int) embd_inp.size() > n_ctx - 4) {
-        fprintf(stderr, "%s: ошибка: промпт слишком длинный (%d токенов, макс. %d)\n", __func__, (int) embd_inp.size(),
-                n_ctx - 4);
-        return 1;
-    }
-
+static llama_sampler *build_sampler(binding_params *params_p, llama_model *model, const llama_vocab *vocab) {
     llama_sampler *smpl = llama_sampler_chain_init(llama_sampler_chain_default_params());
 
     if (params_p->temp <= 0) {
@@ -269,6 +195,89 @@ int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug) {
             llama_sampler_chain_add(smpl, grammar_smpl);
         }
     }
+
+    return smpl;
+}
+
+int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings) {
+    binding_params *params_p = (binding_params *) params_ptr;
+    llama_binding_state *state = (llama_binding_state *) state_pr;
+    llama_context *ctx = state->ctx;
+    llama_model *model = state->model;
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+
+    bool add_bos = llama_vocab_get_add_bos(vocab);
+    std::vector <llama_token> tokens = tokenize_prompt(vocab, params_p->prompt, add_bos);
+
+    if (tokens.empty()) {
+        fprintf(stderr, "%s: ошибка: промпт пуст\n", __func__);
+        return 1;
+    }
+
+    llama_batch batch = llama_batch_get_one(tokens.data(), tokens.size());
+
+    if (llama_decode(ctx, batch) != 0) {
+        fprintf(stderr, "%s: не удалось выполнить декодирование\n", __func__);
+        return 1;
+    }
+
+    const int n_embd = llama_model_n_embd(model);
+    const float *embeddings = llama_get_embeddings(ctx);
+
+    if (embeddings == nullptr) {
+        fprintf(stderr, "%s: эмбеддинги недоступны\n", __func__);
+        return 1;
+    }
+
+    for (int i = 0; i < n_embd; i++) {
+        res_embeddings[i] = embeddings[i];
+    }
+
+    return 0;
+}
+
+int get_token_embeddings(void *params_ptr, void *state_pr, int *tokens, int tokenSize, float *res_embeddings) {
+    binding_params *params_p = (binding_params *) params_ptr;
+    llama_binding_state *state = (llama_binding_state *) state_pr;
+    llama_model *model = state->model;
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+
+    std::string prompt;
+    for (int i = 0; i < tokenSize; i++) {
+        prompt += token_to_piece(vocab, tokens[i]);
+    }
+    params_p->prompt = prompt;
+
+    return get_embeddings(params_ptr, state_pr, res_embeddings);
+}
+
+int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug) {
+    binding_params *params_p = (binding_params *) params_ptr;
+    llama_binding_state *state = (llama_binding_state *) state_pr;
+    llama_context *ctx = state->ctx;
+    llama_model *model = state->model;
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+
+    const int n_ctx = llama_n_ctx(ctx);
+
+    if (static_cast<uint32_t>(params_p->seed) != LLAMA_DEFAULT_SEED) {
+        (void)0;
+    }
+
+    bool add_bos = llama_vocab_get_add_bos(vocab);
+    std::vector <llama_token> embd_inp = tokenize_prompt(vocab, params_p->prompt, add_bos);
+
+    if (embd_inp.empty()) {
+        embd_inp.push_back(llama_vocab_bos(vocab));
+    }
+
+    if ((int) embd_inp.size() > n_ctx - 4) {
+        fprintf(stderr, "%s: ошибка: промпт слишком длинный (%d токенов, макс. %d)\n", __func__, (int) embd_inp.size(),
+                n_ctx - 4);
+        return 1;
+    }
+
+    llama_sampler *smpl = build_sampler(params_p, model, vocab);
 
     std::string res = "";
     std::vector <llama_token> embd;
@@ -364,15 +373,190 @@ int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug) {
     return 0;
 }
 
+int llama_predict_mtmd(
+        void *params_ptr,
+        void *state_ptr,
+        unsigned char **image_bufs,
+        size_t *image_lens,
+        int n_images,
+        char *result,
+        bool debug
+) {
+    binding_params *params_p = (binding_params *) params_ptr;
+    llama_binding_state *state = (llama_binding_state *) state_ptr;
+    if (state == nullptr || state->mtmd == nullptr) {
+        fprintf(stderr, "%s: mtmd не инициализирован (задайте mmproj при загрузке)\n", __func__);
+        return 1;
+    }
+    if (n_images <= 0 || image_bufs == nullptr || image_lens == nullptr) {
+        fprintf(stderr, "%s: нет изображений\n", __func__);
+        return 1;
+    }
+
+    llama_context *ctx = state->ctx;
+    llama_model *model = state->model;
+    const llama_vocab *vocab = llama_model_get_vocab(model);
+    const int n_ctx = llama_n_ctx(ctx);
+    mtmd_context *mctx = state->mtmd;
+
+    std::vector <mtmd_bitmap *> bitmap_objs;
+    bitmap_objs.reserve((size_t) n_images);
+    std::vector <const mtmd_bitmap *> bitmap_ptrs;
+    bitmap_ptrs.reserve((size_t) n_images);
+
+    for (int i = 0; i < n_images; i++) {
+        mtmd_bitmap *b = mtmd_helper_bitmap_init_from_buf(mctx, image_bufs[i], image_lens[i]);
+        if (b == nullptr) {
+            for (mtmd_bitmap *p: bitmap_objs) {
+                mtmd_bitmap_free(p);
+            }
+            fprintf(stderr, "%s: не удалось декодировать изображение %d\n", __func__, i);
+            return 1;
+        }
+        bitmap_objs.push_back(b);
+        bitmap_ptrs.push_back(b);
+    }
+
+    mtmd_input_text text;
+    text.text = params_p->prompt.c_str();
+    text.add_special = llama_vocab_get_add_bos(vocab);
+    text.parse_special = true;
+
+    mtmd_input_chunks *chunks = mtmd_input_chunks_init();
+    int32_t tkr = mtmd_tokenize(mctx, chunks, &text, bitmap_ptrs.data(), bitmap_ptrs.size());
+    for (mtmd_bitmap *p: bitmap_objs) {
+        mtmd_bitmap_free(p);
+    }
+    bitmap_objs.clear();
+
+    if (tkr != 0) {
+        fprintf(stderr, "%s: mtmd_tokenize вернул %d (нужен маркер %s на каждое изображение)\n", __func__, (int) tkr,
+                mtmd_default_marker());
+        mtmd_input_chunks_free(chunks);
+        return 1;
+    }
+
+    llama_pos new_n_past = 0;
+    if (mtmd_helper_eval_chunks(mctx, ctx, chunks, 0, 0, params_p->n_batch, true, &new_n_past) != 0) {
+        fprintf(stderr, "%s: mtmd_helper_eval_chunks ошибка\n", __func__);
+        mtmd_input_chunks_free(chunks);
+        return 1;
+    }
+    mtmd_input_chunks_free(chunks);
+
+    int n_past = (int) new_n_past;
+    if (n_past > n_ctx - 4) {
+        fprintf(stderr, "%s: промпт слишком длинный (%d позиций, макс. %d)\n", __func__, n_past, n_ctx - 4);
+        return 1;
+    }
+
+    llama_sampler *smpl = build_sampler(params_p, model, vocab);
+
+    std::string res;
+    std::vector <llama_token> embd;
+    std::vector <llama_token> embd_inp;
+
+    int n_remain = params_p->n_predict;
+    int n_consumed = 0;
+    bool is_antiprompt = false;
+
+    while (n_remain != 0) {
+        if (!embd.empty()) {
+            if (n_past + (int) embd.size() > n_ctx) {
+                fprintf(stderr, "%s: контекст переполнен при генерации\n", __func__);
+                llama_sampler_free(smpl);
+                return 1;
+            }
+
+            for (int i = 0; i < (int) embd.size(); i += params_p->n_batch) {
+                int n_eval = (int) embd.size() - i;
+                if (n_eval > params_p->n_batch) {
+                    n_eval = params_p->n_batch;
+                }
+
+                llama_batch batch = llama_batch_get_one(&embd[i], n_eval);
+
+                if (llama_decode(ctx, batch) != 0) {
+                    fprintf(stderr, "%s: не удалось выполнить декодирование\n", __func__);
+                    llama_sampler_free(smpl);
+                    return 1;
+                }
+                n_past += n_eval;
+            }
+        }
+
+        embd.clear();
+
+        if ((int) embd_inp.size() <= n_consumed) {
+            llama_token id = llama_sampler_sample(smpl, ctx, -1);
+            llama_sampler_accept(smpl, id);
+
+            embd.push_back(id);
+            --n_remain;
+
+            std::string token_str = token_to_piece(vocab, id);
+            if (!tokenCallback(state_ptr, const_cast<char *>(token_str.c_str()))) {
+                break;
+            }
+
+            res += token_str;
+        } else {
+            while ((int) embd_inp.size() > n_consumed) {
+                embd.push_back(embd_inp[n_consumed]);
+                ++n_consumed;
+                if ((int) embd.size() >= params_p->n_batch) {
+                    break;
+                }
+            }
+        }
+
+        if ((int) embd_inp.size() <= n_consumed) {
+            for (const std::string &antiprompt: params_p->antiprompt) {
+                if (res.length() >= antiprompt.length()) {
+                    if (res.substr(res.length() - antiprompt.length()) == antiprompt) {
+                        is_antiprompt = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (is_antiprompt) {
+            break;
+        }
+
+        if (!embd.empty() && llama_vocab_is_eog(vocab, embd.back())) {
+            break;
+        }
+    }
+
+    if (debug) {
+        llama_perf_context_print(ctx);
+    }
+
+    llama_sampler_free(smpl);
+
+    strcpy(result, res.c_str());
+
+    return 0;
+}
+
 void llama_binding_free_model(void *state_ptr) {
     llama_binding_state *state = (llama_binding_state *) state_ptr;
+    if (state->mtmd != nullptr) {
+        mtmd_free(state->mtmd);
+        state->mtmd = nullptr;
+    }
+
     if (state->ctx != nullptr) {
         llama_set_adapters_lora(state->ctx, nullptr, 0, nullptr);
         llama_free(state->ctx);
     }
+
     if (state->model != nullptr) {
         llama_model_free(state->model);
     }
+
     delete state;
 }
 
@@ -594,7 +778,8 @@ void *load_model(
         float rope_freq_base,
         float rope_freq_scale,
         const char *lora,
-        const char *lora_base
+        const char *lora_base,
+        const char *mmproj_path
 ) {
     (void) n_seed;
     (void) memory_f16;
@@ -670,8 +855,30 @@ void *load_model(
     llama_binding_state *state = new llama_binding_state;
     state->model = model;
     state->ctx = ctx;
+    state->mtmd = nullptr;
+
+    if (mmproj_path != nullptr && mmproj_path[0] != '\0') {
+        mtmd_context_params mp = mtmd_context_params_default();
+        mp.n_threads = 4;
+        state->mtmd = mtmd_init_from_file(mmproj_path, model, mp);
+        if (state->mtmd == nullptr) {
+            fprintf(stderr, "%s: предупреждение: не удалось загрузить mmproj из '%s'\n", __func__, mmproj_path);
+        }
+    }
 
     return state;
+}
+
+const char *llama_mtmd_default_marker(void) {
+    return mtmd_default_marker();
+}
+
+bool llama_has_mtmd(void *state_ptr) {
+    if (state_ptr == nullptr) {
+        return false;
+    }
+    llama_binding_state *state = (llama_binding_state *) state_ptr;
+    return state->mtmd != nullptr;
 }
 
 int get_model_n_vocab(void *state_ptr) {

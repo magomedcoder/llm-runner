@@ -10,7 +10,7 @@ const testImEnd = "<|im_end|>"
 func TestTrimTrailingStops(t *testing.T) {
 	got := trimTrailingStops("hello"+testImEnd, []string{testImEnd})
 	if got != "hello" {
-		t.Fatalf("got %q", got)
+		t.Fatalf("обрезка стопа: получено %q, ожидалось hello", got)
 	}
 }
 
@@ -21,7 +21,7 @@ func TestStopStreamFilter_fullStopBufferedThenDropped(t *testing.T) {
 	f.flush()
 
 	if strings.Contains(b.String(), testImEnd) {
-		t.Fatalf("stop leaked: %q", b.String())
+		t.Fatalf("стоп-последовательность не должна попадать в вывод: %q", b.String())
 	}
 }
 
@@ -33,11 +33,11 @@ func TestStopStreamFilter_textThenStop(t *testing.T) {
 	f.flush()
 	got := b.String()
 	if strings.Contains(got, testImEnd) {
-		t.Fatalf("got %q", got)
+		t.Fatalf("в выводе не должно быть стоп-токена: %q", got)
 	}
 
 	if !strings.Contains(got, "Привет") {
-		t.Fatalf("lost text: %q", got)
+		t.Fatalf("текст до стопа потерян: %q", got)
 	}
 }
 
@@ -52,10 +52,10 @@ func TestStopStreamFilter_russianNotSplit(t *testing.T) {
 	f.flush()
 	got := b.String()
 	if strings.Contains(got, testImEnd) {
-		t.Fatalf("got %q", got)
+		t.Fatalf("побайтово: в выводе не должно быть стоп-токена: %q", got)
 	}
 
 	if got != "Привет" {
-		t.Fatalf("want Привет, got %q", got)
+		t.Fatalf("ожидалось «Привет», получено %q", got)
 	}
 }

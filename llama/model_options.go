@@ -102,6 +102,12 @@ var EnableMLock ModelOption = func(p *ModelOptions) {
 	p.MLock = true
 }
 
+func WithMmproj(path string) ModelOption {
+	return func(p *ModelOptions) {
+		p.MmprojPath = path
+	}
+}
+
 func NewModelOptions(opts ...ModelOption) ModelOptions {
 	p := DefaultModelOptions
 	for _, opt := range opts {

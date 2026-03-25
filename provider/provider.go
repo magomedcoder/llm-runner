@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/magomedcoder/llm-runner/config"
 	"github.com/magomedcoder/llm-runner/domain"
@@ -12,7 +13,13 @@ import (
 type TextBackend interface {
 	CheckConnection(ctx context.Context) (bool, error)
 
+	WarmDefaultModel(ctx context.Context, model string) error
+
 	GetModels(ctx context.Context) ([]string, error)
+
+	GetLoadedModel(ctx context.Context) (loaded bool, ggufBasename, displayName string, err error)
+
+	UnloadModel(ctx context.Context) error
 
 	SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error)
 
@@ -22,7 +29,13 @@ type TextBackend interface {
 type TextProvider interface {
 	CheckConnection(ctx context.Context) (bool, error)
 
+	WarmDefaultModel(ctx context.Context, model string) error
+
 	GetModels(ctx context.Context) ([]string, error)
+
+	GetLoadedModel(ctx context.Context) (loaded bool, ggufBasename, displayName string, err error)
+
+	UnloadModel(ctx context.Context) error
 
 	SendMessage(ctx context.Context, sessionId int64, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error)
 
@@ -46,6 +59,9 @@ func NewTextProvider(cfg *config.Config) (TextProvider, error) {
 	}
 
 	opts = append(opts, service.WithEmbeddings(true))
+	if strings.TrimSpace(cfg.MmprojPath) != "" {
+		opts = append(opts, service.WithMmprojPath(cfg.MmprojPath))
+	}
 	svc := service.NewLlamaService(cfg.ModelPath, opts...)
 
 	return NewText(svc), nil

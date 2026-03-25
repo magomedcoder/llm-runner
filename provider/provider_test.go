@@ -22,7 +22,7 @@ func TestNewTextProvider_llama_withPath(t *testing.T) {
 	}
 	tp, err := NewTextProvider(cfg)
 	if err != nil {
-		t.Fatalf("NewTextProvider(llama): %v", err)
+		t.Fatalf("NewTextProvider: %v", err)
 	}
 
 	if tp == nil {

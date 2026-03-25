@@ -20,6 +20,7 @@ type ModelOptions struct {
 	FreqRopeScale float32
 	LoraBase      string
 	LoraAdapter   string
+	MmprojPath    string
 }
 
 type PredictOptions struct {
