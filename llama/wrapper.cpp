@@ -335,7 +335,7 @@ char* llama_wrapper_generate_with_tokens(void* ctx, const int* tokens, int n_tok
         int tokens_needed = (int)prompt_tokens.size() + params.max_tokens;
         if (tokens_needed > available_ctx) {
             char err_msg[256];
-            snprintf(err_msg, sizeof(err_msg), "Подсказка слишком длинная для размера контекста: требуется %d токенов (%d подсказка + %d генерация), но контекст содержит только %d токенов". tokens_needed, (int)prompt_tokens.size(), params.max_tokens > 0 ? params.max_tokens : 128, available_ctx);
+            snprintf(err_msg, sizeof(err_msg), "Подсказка слишком длинная для размера контекста: требуется %d токенов (%d подсказка + %d генерация), но контекст содержит только %d токенов", tokens_needed, (int)prompt_tokens.size(), params.max_tokens > 0 ? params.max_tokens : 128, available_ctx);
             g_last_error = err_msg;
 
             return nullptr;

@@ -217,5 +217,4 @@ clean:
 	rm -rf *.a
 	rm -rf *.so
 	rm -rf llama.cpp/*.o
-	cd llama.cpp && git checkout -- . && git clean -fd
 	rm -rf build
