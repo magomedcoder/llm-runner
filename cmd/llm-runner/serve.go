@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"os"
 	"os/signal"
 	"strings"
 	"syscall"
@@ -25,12 +24,15 @@ func cmdServe() *cli.Command {
 	return &cli.Command{
 		Name:    "serve",
 		Aliases: []string{"s"},
-		Usage:   "Запустить gRPC-сервер раннера (конфиг из LLM_RUNNER_CONFIG / по умолчанию)",
+		Usage:   "Запустить сервер раннера",
 		Action:  runServe,
 	}
 }
 
 func runServe(ctx context.Context, _ *cli.Command) error {
+	ctx, stopSignals := signal.NotifyContext(ctx, syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+
 	cfg, err := config.Load()
 	if err != nil {
 		logger.Default.SetLevel(logger.LevelInfo)
@@ -72,34 +74,60 @@ func runServe(ctx context.Context, _ *cli.Command) error {
 	)
 	llmrunnerpb.RegisterLLMRunnerServiceServer(grpcServer, runnerServer)
 
+	errCh := make(chan error, 1)
 	go func() {
 		logger.I("Раннер слушает на %s", listenAddr)
-		if err := grpcServer.Serve(lis); err != nil {
-			logger.E("Ошибка gRPC: %v", err)
-			os.Exit(1)
-		}
+		errCh <- grpcServer.Serve(lis)
 	}()
 
 	coreAddr := cfg.CoreAddr()
+	registered := false
 	if coreAddr != "" && listenAddr != "" {
 		if err := registerWithCore(coreAddr, listenAddr, cfg.RegistrationToken); err != nil {
 			logger.W("Регистрация в ядре не удалась: %v", err)
 		} else {
 			logger.I("Зарегистрирован в ядре %s как %s", coreAddr, listenAddr)
-			defer unregisterFromCore(coreAddr, listenAddr, cfg.RegistrationToken)
+			registered = true
 		}
 	}
 
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	select {
-	case <-quit:
 	case <-ctx.Done():
+	case err := <-errCh:
+		if err == nil || err == grpc.ErrServerStopped {
+			return nil
+		}
+		logger.E("Ошибка gRPC: %v", err)
+		return err
 	}
 
-	grpcServer.GracefulStop()
-	logger.I("Раннер остановлен")
+	logger.I("Остановка раннера...")
 
+	if registered {
+		unregisterFromCore(coreAddr, listenAddr, cfg.RegistrationToken)
+	}
+
+	const shutdownTimeout = 15 * time.Second
+	done := make(chan struct{})
+	go func() {
+		grpcServer.GracefulStop()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(shutdownTimeout):
+		logger.W("GracefulStop не завершился за %s, принудительная остановка", shutdownTimeout)
+		grpcServer.Stop()
+	}
+
+	unloadCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := textProvider.UnloadModel(unloadCtx); err != nil {
+		logger.W("Выгрузка модели при остановке: %v", err)
+	}
+
+	logger.I("Раннер остановлен")
 	return nil
 }
 

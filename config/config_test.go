@@ -8,7 +8,7 @@ import (
 
 func TestLoad(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "runner.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	content := `core:
   host: "127.0.0.1"
   port: 50051
@@ -23,7 +23,7 @@ default_model: "test-model"
 		t.Fatalf("запись тестового конфига: %v", err)
 	}
 
-	t.Setenv("LLM_RUNNER_CONFIG", configPath)
+	t.Chdir(dir)
 
 	cfg, err := Load()
 	if err != nil {
@@ -51,7 +51,7 @@ default_model: "test-model"
 
 func TestLoad_ChatAPIReasoningAndDebugFields(t *testing.T) {
 	dir := t.TempDir()
-	configPath := filepath.Join(dir, "runner.yaml")
+	configPath := filepath.Join(dir, "config.yaml")
 	content := `core:
   host: "127.0.0.1"
   port: 50051
@@ -73,7 +73,7 @@ log_model_stats: true
 	if err := os.WriteFile(configPath, []byte(content), 0o644); err != nil {
 		t.Fatalf("запись тестового конфига: %v", err)
 	}
-	t.Setenv("LLM_RUNNER_CONFIG", configPath)
+	t.Chdir(dir)
 
 	cfg, err := Load()
 	if err != nil {

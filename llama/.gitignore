@@ -1,5 +1,6 @@
 llama.cpp
 /build
+*.a
 *.o
 *.so
 *.so.0

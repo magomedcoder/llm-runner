@@ -78,10 +78,7 @@ type Config struct {
 func Load() (*Config, error) {
 	c := &Config{}
 
-	configPath := os.Getenv("LLM_RUNNER_CONFIG")
-	if configPath == "" {
-		configPath = "./config.yaml"
-	}
+	configPath := "config.yaml"
 
 	if _, err := os.Stat(configPath); err == nil {
 		data, err := os.ReadFile(configPath)
@@ -200,7 +197,7 @@ func (c *Config) ModelsDir() string {
 func (c *Config) RequireAbsModelsDir() (string, error) {
 	d := strings.TrimSpace(c.ModelsDir())
 	if d == "" {
-		return "", fmt.Errorf("model_path: укажите каталог или файл модели в config.yaml (LLM_RUNNER_CONFIG)")
+		return "", fmt.Errorf("model_path: укажите каталог или файл модели в config.yaml")
 	}
 
 	abs, err := filepath.Abs(d)
