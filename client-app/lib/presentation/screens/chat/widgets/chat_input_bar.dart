@@ -380,7 +380,9 @@ class ChatInputBarState extends State<ChatInputBar> {
                     : theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
                 ),
               ),
-            if (widget.showRetry && state.retryText != null && !state.isStreaming) ...[
+            if (widget.showRetry &&
+                state.retryText != null &&
+                !state.isStreamingInCurrentSession) ...[
               TextButton.icon(
                 onPressed: widget.isEnabled
                   ? () => context.read<ChatBloc>().add(const ChatRetryLastMessage())
@@ -406,7 +408,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                       constraints: BoxConstraints(
                         maxWidth: constraints.maxWidth,
                       ),
-                      child: (state.isStreaming && widget.showStop)
+                      child: (state.isStreamingInCurrentSession && widget.showStop)
                         ? FilledButton.tonal(
                           onPressed: _stopGeneration,
                           style: FilledButton.styleFrom(

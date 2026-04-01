@@ -10,11 +10,13 @@ class SessionListTile extends StatelessWidget {
     required this.onTap,
     required this.onLongPress,
     this.onSecondaryTapDown,
+    this.showBusyIndicator = false,
   });
 
   final ChatSession session;
   final bool isSelected;
   final bool isDesktop;
+  final bool showBusyIndicator;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
   final void Function(TapDownDetails details)? onSecondaryTapDown;
@@ -64,15 +66,25 @@ class SessionListTile extends StatelessWidget {
                                 ? FontWeight.w600
                                 : FontWeight.normal,
                             color: isSelected
-                                ? Theme.of(
-                                    context,
-                                  ).colorScheme.onPrimaryContainer
+                                ? Theme.of(context).colorScheme.onPrimaryContainer
                                 : Theme.of(context).colorScheme.onSurface,
                           ),
                         ),
                       ],
                     ),
                   ),
+                  if (showBusyIndicator)
+                    Padding(
+                      padding: const EdgeInsets.only(left: 8),
+                      child: SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Theme.of(context).colorScheme.onPrimaryContainer,
+                        ),
+                      ),
+                    ),
                   if (isSelected)
                     Icon(
                       Icons.chevron_right,

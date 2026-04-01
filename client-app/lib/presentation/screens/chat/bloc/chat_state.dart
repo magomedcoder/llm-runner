@@ -12,6 +12,8 @@ class ChatState extends Equatable {
   final bool isConnected;
   final bool isLoading;
   final bool isStreaming;
+  final int? streamingSessionId;
+  final List<Message>? streamingParkedMessages;
   final int? currentSessionId;
   final List<ChatSession> sessions;
   final List<Message> messages;
@@ -40,10 +42,17 @@ class ChatState extends Equatable {
   final bool isLoadingOlderMessages;
   final int? partialAssistantMessageId;
 
+  bool get isStreamingInCurrentSession =>
+      isStreaming &&
+      streamingSessionId != null &&
+      currentSessionId == streamingSessionId;
+
   const ChatState({
     this.isConnected = false,
     this.isLoading = false,
     this.isStreaming = false,
+    this.streamingSessionId,
+    this.streamingParkedMessages,
     this.currentSessionId,
     this.sessions = const [],
     this.messages = const [],
@@ -77,6 +86,10 @@ class ChatState extends Equatable {
     bool? isConnected,
     bool? isLoading,
     bool? isStreaming,
+    int? streamingSessionId,
+    bool clearStreamingSessionId = false,
+    List<Message>? streamingParkedMessages,
+    bool clearStreamingParked = false,
     Object? currentSessionId = _kKeepCurrentSessionId,
     List<ChatSession>? sessions,
     List<Message>? messages,
@@ -112,6 +125,12 @@ class ChatState extends Equatable {
       isConnected: isConnected ?? this.isConnected,
       isLoading: isLoading ?? this.isLoading,
       isStreaming: isStreaming ?? this.isStreaming,
+      streamingSessionId: clearStreamingSessionId
+        ? null
+        : (streamingSessionId ?? this.streamingSessionId),
+      streamingParkedMessages: clearStreamingParked
+        ? null
+        : (streamingParkedMessages ?? this.streamingParkedMessages),
       currentSessionId: identical(currentSessionId, _kKeepCurrentSessionId)
         ? this.currentSessionId
         : currentSessionId as int?,
@@ -161,6 +180,8 @@ class ChatState extends Equatable {
     isConnected,
     isLoading,
     isStreaming,
+    streamingSessionId,
+    streamingParkedMessages,
     currentSessionId,
     sessions,
     messages,

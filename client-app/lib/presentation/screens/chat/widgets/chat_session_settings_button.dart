@@ -49,7 +49,7 @@ class ChatSessionSettingsButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final disabled = state.currentSessionId == null || state.isStreaming;
+    final disabled = state.currentSessionId == null || state.isStreamingInCurrentSession;
     return IconButton(
       tooltip: 'Настройки чата',
       onPressed: disabled ? null : () => _openSettings(context),

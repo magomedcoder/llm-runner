@@ -64,6 +64,10 @@ type MessageRepository interface {
 
 	GetBySessionId(ctx context.Context, sessionID int64, page, pageSize int32) ([]*Message, int32, error)
 
+	ListBySessionBeforeID(ctx context.Context, sessionID int64, beforeMessageID int64, limit int32) ([]*Message, int32, error)
+
+	SessionHasOlderMessages(ctx context.Context, sessionID int64, olderThanMessageID int64) (bool, error)
+
 	GetByID(ctx context.Context, id int64) (*Message, error)
 
 	ListMessagesWithIDLessThan(ctx context.Context, sessionID int64, beforeMessageID int64) ([]*Message, error)

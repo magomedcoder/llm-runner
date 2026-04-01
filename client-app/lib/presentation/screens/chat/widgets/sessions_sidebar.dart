@@ -97,7 +97,8 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
           Expanded(
             child: BlocBuilder<ChatBloc, ChatState>(
               builder: (context, state) {
-                if (state.isLoading) {
+                final blockSidebarForSessionsFetch = state.isLoading && !state.isStreaming && state.sessions.isEmpty;
+                if (blockSidebarForSessionsFetch) {
                   return const SessionsSidebarLoadingState();
                 }
 
@@ -126,6 +127,7 @@ class _SessionsSidebarState extends State<SessionsSidebar> {
                         session: session,
                         isSelected: isSelected,
                         isDesktop: isDesktop,
+                        showBusyIndicator: state.streamingSessionId == session.id,
                         onTap: () => widget.onSelectSession(session),
                         onLongPress: () =>
                             _showSessionContextMenuMobile(session),

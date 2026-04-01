@@ -202,7 +202,7 @@ func genParamsFromSessionSettings(settings *domain.ChatSessionSettings) (stopSeq
 	return stopSequences, timeoutSeconds, genParams
 }
 
-func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, userMessage string, attachmentName string, attachmentContent []byte, existingAttachmentFileID *int64) (chan ChatStreamChunk, error) {
+func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, userMessage string, attachmentFileID *int64) (chan ChatStreamChunk, error) {
 	logger.D("SendMessage: session=%d user=%d", sessionId, userId)
 	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
 	if err != nil {
@@ -216,57 +216,27 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 		return nil, err
 	}
 
-	rawMessages, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 100)
+	messages, err := c.historyMessagesForLLM(ctx, sessionId)
 	if err != nil {
-		logger.E("SendMessage: получение сообщений: %v", err)
+		logger.E("SendMessage: история для LLM: %v", err)
 		return nil, err
 	}
-	messages := filterHistoryForLLM(rawMessages)
 
-	var attachmentFileID *int64
+	var attachmentName string
+	var attachmentContent []byte
+	var storedAttachmentFileID *int64
 
-	if existingAttachmentFileID != nil && *existingAttachmentFileID > 0 {
-		if len(attachmentContent) > 0 {
-			return nil, fmt.Errorf("нельзя одновременно передавать вложение и attachment_file_id")
-		}
-		name, content, err := c.loadSessionAttachmentForSend(ctx, userId, sessionId, *existingAttachmentFileID)
+	if attachmentFileID != nil && *attachmentFileID > 0 {
+		name, content, err := c.loadSessionAttachmentForSend(ctx, userId, sessionId, *attachmentFileID)
 		if err != nil {
 			return nil, err
 		}
 		attachmentName = name
 		attachmentContent = content
-		attachmentFileID = existingAttachmentFileID
-	} else {
-		if len(attachmentContent) > 0 || attachmentName != "" {
-			if len(attachmentContent) == 0 || strings.TrimSpace(attachmentName) == "" {
-				return nil, fmt.Errorf("вложение передано некорректно")
-			}
-
-			if len(attachmentContent) > document.MaxRecommendedAttachmentSizeBytes {
-				return nil, fmt.Errorf("размер вложения превышает рекомендуемый максимум: %d байт", document.MaxRecommendedAttachmentSizeBytes)
-			}
-
-			if document.IsImageAttachment(attachmentName) {
-				if err := document.ValidateImageAttachment(attachmentName, attachmentContent); err != nil {
-					return nil, err
-				}
-			} else if err := document.ValidateAttachment(attachmentName, attachmentContent); err != nil {
-				return nil, err
-			}
-		}
-
-		if len(attachmentContent) > 0 && attachmentName != "" && c.attachmentsSaveDir != "" {
-			file, err := c.saveAttachmentAndCreateFile(ctx, userId, sessionId, attachmentName, attachmentContent)
-			if err == nil {
-				v := file.Id
-				attachmentFileID = &v
-			} else {
-				logger.W("ChatUseCase: вложение: %v", err)
-			}
-		}
+		storedAttachmentFileID = attachmentFileID
 	}
 
-	userMsg := domain.NewMessageWithAttachment(sessionId, userMessage, domain.MessageRoleUser, attachmentFileID)
+	userMsg := domain.NewMessageWithAttachment(sessionId, userMessage, domain.MessageRoleUser, storedAttachmentFileID)
 	if err := c.messageRepo.Create(ctx, userMsg); err != nil {
 		logger.E("SendMessage: создание сообщения: %v", err)
 		return nil, err
@@ -321,91 +291,6 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 
 	var fullResponse strings.Builder
 	clientChan := make(chan ChatStreamChunk, 100)
-	go func() {
-		defer func() {
-			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
-		}()
-		defer close(clientChan)
-
-		for chunk := range responseChan {
-			fullResponse.WriteString(chunk)
-			select {
-			case <-ctx.Done():
-				return
-			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: chunk, MessageID: messageID}:
-			}
-		}
-	}()
-
-	return clientChan, nil
-}
-
-func (c *ChatUseCase) SendMessageMulti(ctx context.Context, userId int, sessionId int64, turns []*domain.Message) (chan ChatStreamChunk, error) {
-	logger.D("SendMessageMulti: session=%d user=%d turns=%d", sessionId, userId, len(turns))
-	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
-	if err != nil {
-		return nil, err
-	}
-
-	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model, c.defaultRunnerAddr)
-	if err != nil {
-		return nil, err
-	}
-
-	now := time.Now()
-	for _, m := range turns {
-		if m == nil {
-			continue
-		}
-
-		row := *m
-		row.SessionId = sessionId
-		row.Id = 0
-		if row.CreatedAt.IsZero() {
-			row.CreatedAt = now
-			row.UpdatedAt = now
-		}
-
-		if err := c.messageRepo.Create(ctx, &row); err != nil {
-			logger.E("SendMessageMulti: создание сообщения: %v", err)
-			return nil, err
-		}
-	}
-
-	rawMessages, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 200)
-	if err != nil {
-		logger.E("SendMessageMulti: получение сообщений: %v", err)
-		return nil, err
-	}
-	messages := filterHistoryForLLM(rawMessages)
-
-	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
-	messagesForLLM := make([]*domain.Message, 0, len(messages)+1)
-	messagesForLLM = append(messagesForLLM, chatSessionSystemMessage(sessionId, settings))
-	messagesForLLM = append(messagesForLLM, messages...)
-
-	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
-	if err := c.messageRepo.Create(ctx, assistantMsg); err != nil {
-		logger.E("SendMessageMulti: черновик ответа: %v", err)
-		return nil, err
-	}
-	messageID := assistantMsg.Id
-
-	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
-
-	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
-		logger.E("SendMessageMulti: подгрузка вложений для раннера: %v", err)
-		return nil, err
-	}
-
-	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
-	if err != nil {
-		logger.E("SendMessageMulti: вызов LLM: %v", err)
-		return nil, err
-	}
-
-	clientChan := make(chan ChatStreamChunk, 100)
-	var fullResponse strings.Builder
 	go func() {
 		defer func() {
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
@@ -520,6 +405,104 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 
 		for chunk := range responseChan {
 			fullResponse.WriteString(chunk)
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindText, Text: chunk, MessageID: messageID}:
+			}
+		}
+	}()
+
+	return clientChan, nil
+}
+
+func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int, sessionId int64, assistantMessageID int64) (chan ChatStreamChunk, error) {
+	logger.D("ContinueAssistantResponse: session=%d user=%d assistantMsg=%d", sessionId, userId, assistantMessageID)
+	if assistantMessageID <= 0 {
+		return nil, fmt.Errorf("некорректный assistant_message_id")
+	}
+
+	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
+	if err != nil {
+		logger.W("ContinueAssistantResponse: сессия: %v", err)
+		return nil, err
+	}
+
+	target, err := c.messageRepo.GetByID(ctx, assistantMessageID)
+	if err != nil {
+		logger.E("ContinueAssistantResponse: загрузка сообщения: %v", err)
+		return nil, err
+	}
+	if target == nil || target.SessionId != sessionId {
+		return nil, fmt.Errorf("сообщение не найдено")
+	}
+	if target.Role != domain.MessageRoleAssistant {
+		return nil, fmt.Errorf("продолжить можно только ответ ассистента")
+	}
+	existingContent := target.Content
+	if strings.TrimSpace(existingContent) == "" {
+		return nil, fmt.Errorf("нет частичного ответа для продолжения")
+	}
+
+	maxID, err := c.messageRepo.MaxMessageIDInSession(ctx, sessionId)
+	if err != nil {
+		logger.E("ContinueAssistantResponse: max id: %v", err)
+		return nil, err
+	}
+	if maxID != assistantMessageID {
+		return nil, fmt.Errorf("продолжить можно только последнее сообщение в чате")
+	}
+
+	resolvedModel, err := resolveModelForUser(ctx, c.llmRepo, c.preferenceRepo, userId, "", session.Model, c.defaultRunnerAddr)
+	if err != nil {
+		return nil, err
+	}
+
+	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
+	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
+	if genParams != nil && len(genParams.Tools) > 0 {
+		return nil, domain.ErrRegenerateToolsNotSupported
+	}
+
+	rawPrefix, err := c.messageRepo.ListMessagesWithIDLessThan(ctx, sessionId, assistantMessageID)
+	if err != nil {
+		logger.E("ContinueAssistantResponse: префикс истории: %v", err)
+		return nil, err
+	}
+	messages := filterHistoryForLLM(rawPrefix)
+
+	partialForLLM := *target
+	partialForLLM.Content = existingContent
+	userContinue := domain.NewMessage(sessionId, "Продолжите ваш предыдущий ответ в роли ассистента. Выведите только продолжение текста, не повторяя то, что уже написали выше.", domain.MessageRoleUser)
+
+	messagesForLLM := make([]*domain.Message, 0, len(messages)+3)
+	messagesForLLM = append(messagesForLLM, chatSessionSystemMessage(sessionId, settings))
+	messagesForLLM = append(messagesForLLM, messages...)
+	messagesForLLM = append(messagesForLLM, &partialForLLM, userContinue)
+
+	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
+		logger.E("ContinueAssistantResponse: вложения: %v", err)
+		return nil, err
+	}
+
+	messageID := assistantMessageID
+
+	responseChan, err := c.llmRepo.SendMessage(ctx, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
+	if err != nil {
+		logger.E("ContinueAssistantResponse: LLM: %v", err)
+		return nil, err
+	}
+
+	var newPart strings.Builder
+	clientChan := make(chan ChatStreamChunk, 100)
+	go func() {
+		defer func() {
+			_ = c.messageRepo.UpdateContent(context.Background(), messageID, existingContent+newPart.String())
+		}()
+		defer close(clientChan)
+
+		for chunk := range responseChan {
+			newPart.WriteString(chunk)
 			select {
 			case <-ctx.Done():
 				return
@@ -938,13 +921,36 @@ func (c *ChatUseCase) GetSessions(ctx context.Context, userId int, page, pageSiz
 	return c.sessionRepo.GetByUserId(ctx, userId, page, pageSize)
 }
 
-func (c *ChatUseCase) GetSessionMessages(ctx context.Context, userId int, sessionId int64, page, pageSize int32) ([]*domain.Message, int32, error) {
+func (c *ChatUseCase) GetSessionMessages(ctx context.Context, userId int, sessionId int64, beforeMessageID int64, pageSize int32) ([]*domain.Message, int32, bool, error) {
 	_, err := c.verifySessionOwnership(ctx, userId, sessionId)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
 
-	return c.messageRepo.GetBySessionId(ctx, sessionId, page, pageSize)
+	if pageSize <= 0 {
+		pageSize = 50
+	}
+	if pageSize > 200 {
+		pageSize = 200
+	}
+
+	msgs, total, err := c.messageRepo.ListBySessionBeforeID(ctx, sessionId, beforeMessageID, pageSize)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	hasMoreOlder := false
+	if len(msgs) > 0 {
+		if int32(len(msgs)) < pageSize {
+			hasMoreOlder = false
+		} else {
+			hasMoreOlder, err = c.messageRepo.SessionHasOlderMessages(ctx, sessionId, msgs[0].Id)
+			if err != nil {
+				return nil, 0, false, err
+			}
+		}
+	}
+
+	return msgs, total, hasMoreOlder, nil
 }
 
 func (c *ChatUseCase) DeleteSession(ctx context.Context, userId int, sessionID int64) error {
@@ -1111,6 +1117,14 @@ func (c *ChatUseCase) loadSessionAttachmentForSend(ctx context.Context, userID i
 	return baseName, data, nil
 }
 
+func (c *ChatUseCase) historyMessagesForLLM(ctx context.Context, sessionId int64) ([]*domain.Message, error) {
+	raw, _, err := c.messageRepo.GetBySessionId(ctx, sessionId, 1, 500)
+	if err != nil {
+		return nil, err
+	}
+	return filterHistoryForLLM(raw), nil
+}
+
 func filterHistoryForLLM(messages []*domain.Message) []*domain.Message {
 	if len(messages) == 0 {
 		return nil
@@ -1235,8 +1249,7 @@ func (c *ChatUseCase) GetSessionFile(ctx context.Context, userID int, sessionID 
 }
 
 const (
-	sessionFileKindAttachment = "attachment"
-	sessionFileKindArtifact   = "artifact"
+	sessionFileKindArtifact = "artifact"
 
 	sessionArtifactMinTTL        = int64(60)
 	sessionArtifactMaxTTL        = int64(7 * 24 * 3600)
@@ -1244,14 +1257,6 @@ const (
 	maxSessionArtifactFileCount  = 200
 	maxSessionArtifactTotalBytes = 80 * 1024 * 1024
 )
-
-func (c *ChatUseCase) saveAttachmentAndCreateFile(ctx context.Context, userID int, sessionID int64, attachmentName string, content []byte) (*domain.File, error) {
-	baseName := filepath.Base(attachmentName)
-	if baseName == "" || baseName == "." {
-		baseName = "attachment"
-	}
-	return c.saveFileInSession(ctx, userID, sessionID, baseName, content, sessionFileKindAttachment, nil)
-}
 
 func (c *ChatUseCase) saveFileInSession(ctx context.Context, userID int, sessionID int64, baseName string, content []byte, kind string, expiresAt *time.Time) (*domain.File, error) {
 	dir := filepath.Join(c.attachmentsSaveDir, strconv.FormatInt(sessionID, 10))

@@ -194,15 +194,13 @@ class _ChatScreenState extends State<ChatScreen> {
       if (!mounted || !_scrollController.hasClients) {
         return;
       }
-      if (curr.messages.isEmpty && !curr.isStreaming) {
+      if (curr.messages.isEmpty && !curr.isStreamingInCurrentSession) {
         return;
       }
       _scrollToBottom();
     }
 
-    if (curr.isStreaming &&
-        (prev.currentStreamingText != curr.currentStreamingText ||
-            (!prev.isStreaming && curr.isStreaming))) {
+    if (curr.isStreamingInCurrentSession && (prev.currentStreamingText != curr.currentStreamingText || (!prev.isStreamingInCurrentSession && curr.isStreamingInCurrentSession))) {
       tryScrollToBottom();
       return;
     }
@@ -377,7 +375,7 @@ class _ChatScreenState extends State<ChatScreen> {
                                   const SizedBox(width: 8),
                                   BlocBuilder<ChatBloc, ChatState>(
                                     builder: (context, state) {
-                                      if (state.isLoading && !state.isStreaming) {
+                                      if (state.isLoading && !state.isStreamingInCurrentSession) {
                                         return const Padding(
                                           padding: EdgeInsets.only(right: 12),
                                           child: SizedBox(

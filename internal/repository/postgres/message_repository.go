@@ -128,6 +128,102 @@ func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64,
 	return messages, total, nil
 }
 
+func (r *messageRepository) ListBySessionBeforeID(ctx context.Context, sessionID int64, beforeMessageID int64, limit int32) ([]*domain.Message, int32, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	if limit > 200 {
+		limit = 200
+	}
+
+	var rows pgx.Rows
+	var err error
+	if beforeMessageID <= 0 {
+		rows, err = r.db.Query(ctx, `
+			SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
+			       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
+			       f.filename, m.created_at, m.updated_at, m.deleted_at
+			FROM messages m
+			LEFT JOIN files f ON m.attachment_file_id = f.id
+			WHERE m.session_id = $1 AND m.deleted_at IS NULL
+			ORDER BY m.id DESC
+			LIMIT $2
+		`, sessionID, limit)
+	} else {
+		rows, err = r.db.Query(ctx, `
+			SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,
+			       COALESCE(m.tool_call_id, ''), COALESCE(m.tool_name, ''), COALESCE(m.tool_calls_json, ''),
+			       f.filename, m.created_at, m.updated_at, m.deleted_at
+			FROM messages m
+			LEFT JOIN files f ON m.attachment_file_id = f.id
+			WHERE m.session_id = $1 AND m.deleted_at IS NULL AND m.id < $2
+			ORDER BY m.id DESC
+			LIMIT $3
+		`, sessionID, beforeMessageID, limit)
+	}
+	if err != nil {
+		return nil, 0, err
+	}
+	defer rows.Close()
+
+	desc := make([]*domain.Message, 0, limit)
+	for rows.Next() {
+		var message domain.Message
+		var attachmentFileID *int64
+		var fname *string
+		if err := rows.Scan(
+			&message.Id,
+			&message.SessionId,
+			&message.Content,
+			&message.Role,
+			&attachmentFileID,
+			&message.ToolCallID,
+			&message.ToolName,
+			&message.ToolCallsJSON,
+			&fname,
+			&message.CreatedAt,
+			&message.UpdatedAt,
+			&message.DeletedAt,
+		); err != nil {
+			return nil, 0, err
+		}
+		message.AttachmentFileID = attachmentFileID
+		if fname != nil {
+			message.AttachmentName = *fname
+		}
+		desc = append(desc, &message)
+	}
+	if rows.Err() != nil {
+		return nil, 0, rows.Err()
+	}
+
+	for i, j := 0, len(desc)-1; i < j; i, j = i+1, j-1 {
+		desc[i], desc[j] = desc[j], desc[i]
+	}
+
+	return desc, 0, nil
+}
+
+func (r *messageRepository) SessionHasOlderMessages(ctx context.Context, sessionID int64, olderThanMessageID int64) (bool, error) {
+	if olderThanMessageID <= 0 {
+		return false, nil
+	}
+	var n int
+	err := r.db.QueryRow(ctx, `
+		SELECT 1
+		FROM messages
+		WHERE session_id = $1 AND deleted_at IS NULL AND id < $2
+		LIMIT 1
+	`, sessionID, olderThanMessageID).Scan(&n)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 func (r *messageRepository) ListBySessionCreatedAtWindowIncludingDeleted(ctx context.Context, sessionID int64, fromInclusive, toExclusive time.Time) ([]*domain.Message, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT m.id, m.session_id, m.content, m.role, m.attachment_file_id,

@@ -56,7 +56,9 @@ class ChatMessageList extends StatelessWidget {
         vertical: 16,
         horizontal: horizontalPadding,
       ),
-      itemCount: state.messages.length + (state.isStreaming ? 1 : 0) + (state.isLoadingOlderMessages ? 1 : 0),
+      itemCount: state.messages.length +
+          (state.isStreamingInCurrentSession ? 1 : 0) +
+          (state.isLoadingOlderMessages ? 1 : 0),
       itemBuilder: (context, index) {
         if (state.isLoadingOlderMessages && index == 0) {
           return const Padding(
@@ -74,11 +76,12 @@ class ChatMessageList extends StatelessWidget {
         final msgIndex = index - offset;
         if (msgIndex < state.messages.length) {
           final msg = state.messages[msgIndex];
-          final canRegenerate = !state.isStreaming &&
+          final canRegenerate = !state.isStreamingInCurrentSession &&
               msgIndex == state.messages.length - 1 &&
               msg.role == MessageRole.assistant &&
               msg.id > 0;
-          final canEdit = !state.isStreaming && msg.role == MessageRole.user && msg.id > 0;
+          final canEdit =
+              !state.isStreamingInCurrentSession && msg.role == MessageRole.user && msg.id > 0;
 
           final edits = canEdit ? state.editsByMessageId[msg.id] : null;
           final cursor = canEdit ? state.editCursorByMessageId[msg.id] : null;
@@ -121,7 +124,12 @@ class ChatMessageList extends StatelessWidget {
           final showAssistantNav = msg.role == MessageRole.assistant && (state.regeneratedAssistantMessageIds.contains(msg.id) || hasRegens);
 
           final isLastInList = msgIndex == state.messages.length - 1;
-          final showContinuePartial = !state.isStreaming && isLastInList && msg.role == MessageRole.assistant && msg.id > 0 && state.partialAssistantMessageId != null && state.partialAssistantMessageId == msg.id;
+          final showContinuePartial = !state.isStreamingInCurrentSession &&
+              isLastInList &&
+              msg.role == MessageRole.assistant &&
+              msg.id > 0 &&
+              state.partialAssistantMessageId != null &&
+              state.partialAssistantMessageId == msg.id;
 
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -167,7 +175,7 @@ class ChatMessageList extends StatelessWidget {
             ),
           );
         }
-        if (state.isStreaming && msgIndex == state.messages.length) {
+        if (state.isStreamingInCurrentSession && msgIndex == state.messages.length) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: ChatBubble(

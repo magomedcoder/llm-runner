@@ -492,16 +492,18 @@ class _ChatBubbleState extends State<ChatBubble> {
                       ),
                     if (widget.showContinuePartial) ...[
                       const SizedBox(width: 4),
-                      TextButton.icon(
+                      IconButton(
                         onPressed: message.id > 0
                           ? () => context.read<ChatBloc>().add(ChatContinueAssistant(message.id))
                           : null,
-                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
-                        label: const Text('Продолжить'),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                          visualDensity: VisualDensity.compact,
+                        icon: const Icon(
+                          Icons.play_arrow_rounded,
+                          size: 18,
                         ),
+                        tooltip: 'Продолжить',
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                       ),
                     ],
                     if (widget.onRegenerate != null)

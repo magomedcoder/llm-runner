@@ -50,65 +50,25 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		return err
 	}
 
-	if len(req.Messages) == 0 {
-		logger.W("SendMessage: пустой список сообщений")
-		return status.Error(codes.InvalidArgument, "сообщения не предоставлены")
+	if req == nil || req.GetSessionId() <= 0 {
+		return status.Error(codes.InvalidArgument, "некорректный session_id")
 	}
 
-	for _, m := range req.Messages {
-		if m == nil || strings.TrimSpace(m.GetRole()) == "" {
-			return status.Error(codes.InvalidArgument, "у каждого сообщения должна быть задана role")
-		}
-
-		if m.AttachmentContent != nil && len(m.AttachmentContent) > 0 && len(req.Messages) > 1 {
-			return status.Error(codes.InvalidArgument, "вложения поддерживаются только при одном сообщении в запросе")
-		}
-
-		if m.GetAttachmentFileId() != 0 && len(req.Messages) > 1 {
-			return status.Error(codes.InvalidArgument, "attachment_file_id поддерживается только при одном сообщении в запросе")
-		}
+	userMessage := req.GetText()
+	var attachmentFileID *int64
+	if fid := req.GetAttachmentFileId(); fid != 0 {
+		v := fid
+		attachmentFileID = &v
 	}
 
-	lastMessage := req.Messages[len(req.Messages)-1]
-	lastRole := strings.ToLower(strings.TrimSpace(lastMessage.GetRole()))
-	if lastRole == "assistant" {
-		logger.W("SendMessage: последнее сообщение с role=assistant")
-		return status.Error(codes.InvalidArgument, "последнее сообщение должно быть role=user или role=tool")
+	if strings.TrimSpace(userMessage) == "" && attachmentFileID == nil {
+		logger.W("SendMessage: пустой запрос")
+		return status.Error(codes.InvalidArgument, "укажите текст сообщения или attachment_file_id")
 	}
 
 	var responseChan chan usecase.ChatStreamChunk
 	var sendErr error
-
-	useLegacySingleUser := len(req.Messages) == 1 && lastRole == "user"
-
-	if useLegacySingleUser {
-		userMessage := lastMessage.Content
-		attachmentName := ""
-		if lastMessage.AttachmentName != nil {
-			attachmentName = *lastMessage.AttachmentName
-		}
-		var attachmentContent []byte
-		if lastMessage.AttachmentContent != nil {
-			attachmentContent = lastMessage.AttachmentContent
-		}
-		if lastMessage.GetAttachmentFileId() != 0 && len(attachmentContent) > 0 {
-			return status.Error(codes.InvalidArgument, "нельзя одновременно передавать вложение и attachment_file_id")
-		}
-		var existingFileID *int64
-		if fid := lastMessage.GetAttachmentFileId(); fid != 0 {
-			v := fid
-			existingFileID = &v
-		}
-		responseChan, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentName, attachmentContent, existingFileID)
-	} else {
-		turns := mappers.MessagesFromProto(req.Messages, req.GetSessionId())
-		for _, t := range turns {
-			if t != nil {
-				t.Id = 0
-			}
-		}
-		responseChan, sendErr = c.chatUseCase.SendMessageMulti(ctx, userID, req.GetSessionId(), turns)
-	}
+	responseChan, sendErr = c.chatUseCase.SendMessage(ctx, userID, req.GetSessionId(), userMessage, attachmentFileID)
 	if sendErr != nil {
 		logger.E("SendMessage: %v", sendErr)
 		if mapped := statusForModelResolutionError(sendErr); mapped != nil {
@@ -205,6 +165,89 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 		}
 
 		return ToStatusError(codes.Internal, regErr)
+	}
+
+	createdAt := time.Now().Unix()
+	var lastMsgID int64
+
+	for chunk := range responseChan {
+		if chunk.Kind == usecase.StreamChunkKindText && chunk.MessageID != 0 {
+			lastMsgID = chunk.MessageID
+		}
+
+		respID := chunk.MessageID
+		if respID == 0 {
+			respID = lastMsgID
+		}
+
+		pbKind := chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT
+		if chunk.Kind == usecase.StreamChunkKindToolStatus {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TOOL_STATUS
+		}
+
+		resp := &chatpb.ChatResponse{
+			Id:        respID,
+			Content:   chunk.Text,
+			Role:      "assistant",
+			CreatedAt: createdAt,
+			Done:      false,
+			ChunkKind: pbKind,
+		}
+
+		if chunk.ToolName != "" {
+			tn := chunk.ToolName
+			resp.ToolName = &tn
+		}
+
+		if err := stream.Send(resp); err != nil {
+			return err
+		}
+	}
+
+	return stream.Send(&chatpb.ChatResponse{
+		Id:        lastMsgID,
+		Content:   "",
+		Role:      "assistant",
+		CreatedAt: createdAt,
+		Done:      true,
+		ChunkKind: chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
+	})
+}
+
+func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantRequest, stream chatpb.ChatService_ContinueAssistantResponseServer) error {
+	ctx := stream.Context()
+	logger.D("ContinueAssistantResponse: session=%d assistantMsg=%d", req.GetSessionId(), req.GetAssistantMessageId())
+	userID, err := c.getUserID(ctx)
+	if err != nil {
+		return err
+	}
+
+	responseChan, contErr := c.chatUseCase.ContinueAssistantResponse(ctx, userID, req.GetSessionId(), req.GetAssistantMessageId())
+	if contErr != nil {
+		logger.E("ContinueAssistantResponse: %v", contErr)
+		if mapped := statusForModelResolutionError(contErr); mapped != nil {
+			return mapped
+		}
+
+		if errors.Is(contErr, domain.ErrRegenerateToolsNotSupported) {
+			return status.Error(codes.FailedPrecondition, contErr.Error())
+		}
+
+		msg := contErr.Error()
+		if strings.Contains(msg, "продолжить можно только") ||
+			strings.Contains(msg, "нечего продолжать") ||
+			strings.Contains(msg, "нет частичного") ||
+			strings.Contains(msg, "не найдено") ||
+			strings.Contains(msg, "некорректный assistant_message_id") ||
+			strings.Contains(msg, "только ответ ассистента") {
+			return status.Error(codes.InvalidArgument, msg)
+		}
+
+		if errors.Is(contErr, domain.ErrUnauthorized) {
+			return status.Error(codes.PermissionDenied, contErr.Error())
+		}
+
+		return ToStatusError(codes.Internal, contErr)
 	}
 
 	createdAt := time.Now().Unix()
@@ -571,9 +614,10 @@ func (c *ChatHandler) GetSessionMessages(ctx context.Context, req *chatpb.GetSes
 		return nil, err
 	}
 
-	page, pageSize := normalizePagination(req.Page, req.PageSize, 50)
+	_, pageSize := normalizePagination(req.Page, req.PageSize, 50)
+	beforeID := req.GetBeforeMessageId()
 
-	messages, total, err := c.chatUseCase.GetSessionMessages(ctx, userID, req.SessionId, page, pageSize)
+	messages, total, hasMoreOlder, err := c.chatUseCase.GetSessionMessages(ctx, userID, req.SessionId, beforeID, pageSize)
 	if err != nil {
 		logger.E("GetSessionMessages: %v", err)
 		return nil, ToStatusError(codes.Internal, err)
@@ -585,10 +629,11 @@ func (c *ChatHandler) GetSessionMessages(ctx context.Context, req *chatpb.GetSes
 	}
 
 	return &chatpb.GetSessionMessagesResponse{
-		Messages: protoMessages,
-		Total:    total,
-		Page:     page,
-		PageSize: pageSize,
+		Messages:     protoMessages,
+		Total:        total,
+		Page:         0,
+		PageSize:     pageSize,
+		HasMoreOlder: hasMoreOlder,
 	}, nil
 }
 

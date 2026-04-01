@@ -21,6 +21,8 @@ service ChatService {
 
   rpc RegenerateAssistantResponse(RegenerateAssistantRequest) returns (stream ChatResponse);
 
+  rpc ContinueAssistantResponse(ContinueAssistantRequest) returns (stream ChatResponse);
+
   rpc EditUserMessageAndContinue(EditUserMessageAndContinueRequest) returns (stream ChatResponse);
 
   rpc GetUserMessageEdits(GetUserMessageEditsRequest) returns (GetUserMessageEditsResponse);
@@ -62,8 +64,6 @@ service ChatService {
   rpc ApplyMarkdownPatch(MarkdownPatchRequest) returns (MarkdownPatchResponse);
 }
 
-
-
 message ConnectionResponse {
   bool is_connected = 1;
 }
@@ -99,10 +99,16 @@ message ChatResponse {
 
 message SendMessageRequest {
   int64 session_id = 1;
-  repeated ChatMessage messages = 2;
+  string text = 2;
+  optional int64 attachment_file_id = 3;
 }
 
 message RegenerateAssistantRequest {
+  int64 session_id = 1;
+  int64 assistant_message_id = 2;
+}
+
+message ContinueAssistantRequest {
   int64 session_id = 1;
   int64 assistant_message_id = 2;
 }
@@ -190,6 +196,7 @@ message GetSessionMessagesRequest {
   int64 session_id = 1;
   int32 page = 2;
   int32 page_size = 3;
+  int64 before_message_id = 4;
 }
 
 message GetSessionMessagesResponse {
@@ -197,6 +204,7 @@ message GetSessionMessagesResponse {
   int32 total = 2;
   int32 page = 3;
   int32 page_size = 4;
+  bool has_more_older = 5;
 }
 
 message DeleteSessionRequest {
