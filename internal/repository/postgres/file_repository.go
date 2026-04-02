@@ -2,7 +2,6 @@ package postgres
 
 import (
 	"context"
-	"os"
 	"strings"
 
 	"github.com/magomedcoder/gen/internal/domain"
@@ -50,31 +49,6 @@ func (r *fileRepository) GetById(ctx context.Context, id int64) (*domain.File, e
 		return nil, err
 	}
 	return fileToDomain(&row), nil
-}
-
-func (r *fileRepository) DeleteExpired(ctx context.Context) (deleted int64, err error) {
-	rows, err := r.db.WithContext(ctx).Raw(`
-		DELETE FROM files
-		WHERE expires_at IS NOT NULL AND expires_at < NOW()
-		RETURNING storage_path
-	`).Rows()
-	if err != nil {
-		return 0, err
-	}
-	defer rows.Close()
-
-	var n int64
-	for rows.Next() {
-		var p string
-		if err := rows.Scan(&p); err != nil {
-			return n, err
-		}
-		if p != "" && p != "." {
-			_ = os.Remove(p)
-		}
-		n++
-	}
-	return n, rows.Err()
 }
 
 func (r *fileRepository) CountSessionTTLArtifacts(ctx context.Context, sessionID int64, userID int) (count int32, totalSize int64, err error) {

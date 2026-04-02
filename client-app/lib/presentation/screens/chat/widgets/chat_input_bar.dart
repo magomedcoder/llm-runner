@@ -24,6 +24,7 @@ class ChatInputBar extends StatefulWidget {
     this.clearOnSubmit = true,
     this.submitLabel = 'Отправить',
     this.submitIcon = Icons.send_rounded,
+    this.roundedCard = false,
   });
 
   final bool isEnabled;
@@ -36,6 +37,7 @@ class ChatInputBar extends StatefulWidget {
   final bool clearOnSubmit;
   final String submitLabel;
   final IconData submitIcon;
+  final bool roundedCard;
 
   @override
   State<ChatInputBar> createState() => ChatInputBarState();
@@ -45,7 +47,7 @@ class ChatInputBarState extends State<ChatInputBar> {
   static const double _inputCardMinHeight = 90.0;
   static const double _inputCardGrowthStep = 50.0;
   static const double _inputCardMaxWindowFactor = 0.5;
-  static const double _cardBorderRadius = 22.0;
+  static const double _roundedCardRadius = 22.0;
   static const EdgeInsets _inputContentPadding = EdgeInsets.fromLTRB(16, 16, 16, 16);
 
   final _textController = TextEditingController();
@@ -500,10 +502,11 @@ class ChatInputBarState extends State<ChatInputBar> {
               horizontalPadding: horizontal,
               layoutWidth: layoutWidth,
             );
-            final cardRadius = BorderRadius.circular(_cardBorderRadius);
+            final cardR = widget.roundedCard ? _roundedCardRadius : 0.0;
+            final cardRadius = BorderRadius.circular(cardR);
             return ClipRRect(
               borderRadius: cardRadius,
-              clipBehavior: Clip.antiAlias,
+              clipBehavior: cardR > 0 ? Clip.antiAlias : Clip.none,
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 140),
                 curve: Curves.easeOutCubic,

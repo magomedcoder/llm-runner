@@ -249,44 +249,42 @@ class _ChatBubbleState extends State<ChatBubble> {
                       ),
                     ),
                   if (_isEditing && isUser && !isStreaming)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: ChatInputBar(
-                        key: ValueKey('edit-${message.id}-${message.content}'),
-                        isEnabled: widget.onEditSubmit != null,
-                        initialText: message.content,
-                        allowAttachments: false,
-                        showRetry: false,
-                        showStop: false,
-                        clearOnSubmit: false,
-                        onCancel: () {
-                          setState(() => _isEditing = false);
-                        },
-                        onSubmitText: widget.onEditSubmit == null
-                          ? null
-                          : (text) async {
-                            final raw = text;
-                            final trimmed = raw.trim();
+                    ChatInputBar(
+                      key: ValueKey('edit-${message.id}-${message.content}'),
+                      isEnabled: widget.onEditSubmit != null,
+                      initialText: message.content,
+                      allowAttachments: false,
+                      showRetry: false,
+                      showStop: false,
+                      clearOnSubmit: false,
+                      roundedCard: true,
+                      onCancel: () {
+                        setState(() => _isEditing = false);
+                      },
+                      onSubmitText: widget.onEditSubmit == null
+                        ? null
+                        : (text) async {
+                          final raw = text;
+                          final trimmed = raw.trim();
 
-                            if (trimmed.isEmpty) {
-                              if (!mounted) {
-                                return;
-                              }
-
-                              showAppTopNotice(
-                                'Текст не может быть пустым',
-                                error: true,
-                              );
-                              return;
-                            }
-
-                            await widget.onEditSubmit!(trimmed);
+                          if (trimmed.isEmpty) {
                             if (!mounted) {
                               return;
                             }
-                            setState(() => _isEditing = false);
-                          },
-                      ),
+
+                            showAppTopNotice(
+                              'Текст не может быть пустым',
+                              error: true,
+                            );
+                            return;
+                          }
+
+                          await widget.onEditSubmit!(trimmed);
+                          if (!mounted) {
+                            return;
+                          }
+                          setState(() => _isEditing = false);
+                        },
                     )
                   else if (message.content.isNotEmpty)
                     isUser

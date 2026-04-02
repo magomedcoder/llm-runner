@@ -31,10 +31,6 @@ func (m mapFileRepo) GetById(_ context.Context, id int64) (*domain.File, error) 
 	return f, nil
 }
 
-func (m mapFileRepo) DeleteExpired(context.Context) (int64, error) {
-	return 0, nil
-}
-
 func (m mapFileRepo) CountSessionTTLArtifacts(context.Context, int64, int) (int32, int64, error) {
 	return 0, 0, nil
 }

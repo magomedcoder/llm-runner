@@ -1071,42 +1071,6 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
   }
 
   @override
-  Future<String?> getSelectedRunner() async {
-    final response = await _authGuard.execute(
-      () => _client.getSelectedRunner(common.Empty()),
-    );
-    return response.runner.isEmpty ? null : response.runner;
-  }
-
-  @override
-  Future<void> setSelectedRunner(String? runner) async {
-    await _authGuard.execute(
-      () => _client.setSelectedRunner(
-        grpc.SetSelectedRunnerRequest(runner: runner ?? ''),
-      ),
-    );
-  }
-
-  @override
-  Future<String?> getDefaultRunnerModel(String runner) async {
-    final response = await _authGuard.execute(
-      () => _client.getDefaultRunnerModel(
-        grpc.GetDefaultRunnerModelRequest(runner: runner),
-      ),
-    );
-    return response.model.isEmpty ? null : response.model;
-  }
-
-  @override
-  Future<void> setDefaultRunnerModel(String runner, String? model) async {
-    await _authGuard.execute(
-      () => _client.setDefaultRunnerModel(
-        grpc.SetDefaultRunnerModelRequest(runner: runner, model: model ?? ''),
-      ),
-    );
-  }
-
-  @override
   Future<ChatSessionSettings> getSessionSettings(int sessionId) async {
     final response = await _authGuard.execute(
       () => _client.getSessionSettings(
@@ -1176,6 +1140,42 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       jsonSchema: response.jsonSchema,
       toolsJson: response.toolsJson,
       profile: response.profile,
+    );
+  }
+
+  @override
+  Future<String?> getSelectedRunner() async {
+    final response = await _authGuard.execute(
+      () => _client.getSelectedRunner(common.Empty()),
+    );
+    return response.runner.isEmpty ? null : response.runner;
+  }
+
+  @override
+  Future<void> setSelectedRunner(String? runner) async {
+    await _authGuard.execute(
+      () => _client.setSelectedRunner(
+        grpc.SetSelectedRunnerRequest(runner: runner ?? ''),
+      ),
+    );
+  }
+
+  @override
+  Future<String?> getDefaultRunnerModel(String runner) async {
+    final response = await _authGuard.execute(
+      () => _client.getDefaultRunnerModel(
+        grpc.GetDefaultRunnerModelRequest(runner: runner),
+      ),
+    );
+    return response.model.isEmpty ? null : response.model;
+  }
+
+  @override
+  Future<void> setDefaultRunnerModel(String runner, String? model) async {
+    await _authGuard.execute(
+      () => _client.setDefaultRunnerModel(
+        grpc.SetDefaultRunnerModelRequest(runner: runner, model: model ?? ''),
+      ),
     );
   }
 

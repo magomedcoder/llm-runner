@@ -64,7 +64,11 @@ class ChatMessagesPanel extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(maxWidth: maxComposer),
-                        child: ChatInputBar(key: inputBarKey, isEnabled: canDropFile),
+                        child: ChatInputBar(
+                          key: inputBarKey,
+                          isEnabled: canDropFile,
+                          roundedCard: true,
+                        ),
                       ),
                     ),
                   ),
@@ -97,7 +101,6 @@ class ChatMessagesPanel extends StatelessWidget {
                   state: state,
                 ),
               ),
-              const Divider(height: 1),
               ChatInputBar(key: inputBarKey, isEnabled: canDropFile),
             ],
           ),
