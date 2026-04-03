@@ -52,13 +52,17 @@ func runServe(ctx context.Context, _ *cli.Command) error {
 
 	warmCtx, warmCancel := context.WithTimeout(ctx, 30*time.Minute)
 	defer warmCancel()
-	if err := textProvider.WarmDefaultModel(warmCtx, cfg.DefaultModel); err != nil {
-		logger.E("Загрузка default_model %q: %v", cfg.DefaultModel, err)
-		return fmt.Errorf("не удалось загрузить default_model: %w", err)
+	warmModel := strings.TrimSpace(cfg.DefaultModel)
+
+	if err := textProvider.WarmDefaultModel(warmCtx, warmModel); err != nil {
+		logger.E("Предзагрузка модели %q: %v", warmModel, err)
+		return fmt.Errorf("не удалось загрузить модель при старте: %w", err)
 	}
-	logger.I("Модель по умолчанию загружена: %s", strings.TrimSpace(cfg.DefaultModel))
+
+	logger.I("Модель по умолчанию загружена: %s", warmModel)
 
 	gpuCollector := gpu.NewCollector()
+
 	runnerServer := runner.NewServer(textProvider, gpuCollector, cfg.MaxConcurrentGenerations, cfg.DefaultModel, cfg.UnloadAfterRPC(), cfg.ModelsDir())
 
 	listenAddr := cfg.ListenAddr()
@@ -83,7 +87,7 @@ func runServe(ctx context.Context, _ *cli.Command) error {
 	coreAddr := cfg.CoreAddr()
 	registered := false
 	if coreAddr != "" && listenAddr != "" {
-		if err := registerWithCore(coreAddr, listenAddr, cfg.RegistrationToken); err != nil {
+		if err := registerWithCore(coreAddr, listenAddr, cfg.RegistrationToken, cfg); err != nil {
 			logger.W("Регистрация в ядре не удалась: %v", err)
 		} else {
 			logger.I("Зарегистрирован в ядре %s как %s", coreAddr, listenAddr)
@@ -131,7 +135,20 @@ func runServe(ctx context.Context, _ *cli.Command) error {
 	return nil
 }
 
-func registerWithCore(coreAddr, registerAddress, registrationToken string) error {
+func registerHintsProto(cfg *config.Config) *llmrunnerpb.RunnerRegisterHints {
+	return &llmrunnerpb.RunnerRegisterHints{
+		MaxContextTokens:                     int32(cfg.MaxContextTokens),
+		LlmHistoryMaxMessages:                int32(cfg.LLMHistoryMaxMessages),
+		LlmHistorySummarizeDropped:           cfg.LLMHistorySummarizeDropped,
+		LlmHistorySummaryMaxInputRunes:       int32(cfg.LLMHistorySummaryMaxInputRunes),
+		LlmHistorySummaryModel:               strings.TrimSpace(cfg.LLMHistorySummaryModel),
+		LlmHistorySummaryRunnerListenAddress: strings.TrimSpace(cfg.LLMHistorySummaryRunnerListen),
+		LlmHistorySummaryCacheEntries:        int32(cfg.LLMHistorySummaryCacheEntries),
+		MaxToolInvocationRounds:              int32(cfg.MaxToolInvocationRounds),
+	}
+}
+
+func registerWithCore(coreAddr, registerAddress, registrationToken string, cfg *config.Config) error {
 	conn, err := grpc.NewClient(coreAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return fmt.Errorf("подключение к ядру: %w", err)
@@ -145,6 +162,7 @@ func registerWithCore(coreAddr, registerAddress, registrationToken string) error
 	_, err = client.RegisterRunnerWithToken(ctx, &llmrunnerpb.RunnerRegisterRequest{
 		ListenAddress:     registerAddress,
 		RegistrationToken: registrationToken,
+		Hints:             registerHintsProto(cfg),
 	})
 
 	return err

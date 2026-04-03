@@ -12,9 +12,9 @@ import (
 func TestMergeGenParams_yamlDefaults(t *testing.T) {
 	y := &ModelYAML{
 		Parameter: &ModelYAMLParameter{
-			Temperature: ptrFloat64(0.1),
-			MaxTokens:   ptrInt(99),
-			MinP:        ptrFloat64(0.07),
+			Temperature: new(0.1),
+			MaxTokens:   new(99),
+			MinP:        new(0.07),
 		},
 	}
 	out := MergeGenParams(nil, y)
@@ -179,12 +179,4 @@ parameter:
 	if !found {
 		t.Fatalf("в каталоге должна быть запись alias, получено %v", names)
 	}
-}
-
-func ptrFloat64(f float64) *float64 {
-	return &f
-}
-
-func ptrInt(i int) *int {
-	return &i
 }

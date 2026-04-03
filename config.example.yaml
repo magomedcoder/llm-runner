@@ -30,7 +30,7 @@ gpu_layers: 0 # 0 - только CPU - -1 - все слои в VRAM (make build-
 
 # progress_callback: false
 
-max_concurrent_generations: 0
+max_concurrent_generations: 0 # Одновременных генераций. 0 = без лимита (под VRAM и нагрузку)
 
 model_retention: keep
 

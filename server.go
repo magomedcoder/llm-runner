@@ -7,6 +7,7 @@ import (
 
 	"github.com/magomedcoder/llm-runner/domain"
 	"github.com/magomedcoder/llm-runner/gpu"
+	"github.com/magomedcoder/llm-runner/logger"
 	"github.com/magomedcoder/llm-runner/pb/llmrunnerpb"
 	"github.com/magomedcoder/llm-runner/provider"
 	"google.golang.org/grpc/codes"
@@ -117,6 +118,30 @@ func (s *Server) CheckConnection(ctx context.Context, _ *llmrunnerpb.Empty) (*ll
 	return &llmrunnerpb.ConnectionResponse{IsConnected: ok}, nil
 }
 
+func (s *Server) RunnerProbe(ctx context.Context, _ *llmrunnerpb.Empty) (*llmrunnerpb.RunnerProbeResponse, error) {
+	out := &llmrunnerpb.RunnerProbeResponse{}
+	if s.textProvider != nil {
+		ok, _ := s.textProvider.CheckConnection(ctx)
+		out.BackendConnected = ok
+	}
+
+	si, _ := s.GetServerInfo(ctx, &llmrunnerpb.Empty{})
+	out.Server = si
+	gi, _ := s.GetGpuInfo(ctx, &llmrunnerpb.Empty{})
+	if gi != nil {
+		out.Gpus = gi.Gpus
+	}
+
+	lm, err := s.GetLoadedModel(ctx, &llmrunnerpb.Empty{})
+	if err != nil {
+		lm = &llmrunnerpb.GetLoadedModelResponse{}
+	}
+
+	out.LoadedModel = lm
+
+	return out, nil
+}
+
 func (s *Server) GetModels(ctx context.Context, _ *llmrunnerpb.Empty) (*llmrunnerpb.GetModelsResponse, error) {
 	if s.textProvider == nil {
 		return &llmrunnerpb.GetModelsResponse{}, nil
@@ -142,11 +167,15 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 	}
 
 	ctx := stream.Context()
+	traceID := incomingTraceID(ctx)
 
+	semInUse, semCap := 0, 0
 	if s.sem != nil {
 		select {
 		case s.sem <- struct{}{}:
 			defer func() { <-s.sem }()
+			semInUse = len(s.sem)
+			semCap = cap(s.sem)
 		case <-ctx.Done():
 			return ctx.Err()
 		}
@@ -157,6 +186,8 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 	if model == "" {
 		model = s.defaultModel
 	}
+
+	logger.V("SendMessage: session_id=%d trace_id=%q model=%q sem_in_use=%d/%d", sessionID, traceID, model, semInUse, semCap)
 	messages := domain.AIMessagesFromProto(req.Messages, sessionID)
 	stopSequences := req.GetStopSequences()
 	genParams := mapGenerationParamsFromProto(req.GetGenerationParams())
@@ -169,6 +200,8 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 
 	start := time.Now()
 	var tokens int64
+	var ttft time.Duration
+	firstToken := false
 
 	ch, err := s.textProvider.SendMessage(ctx, sessionID, model, messages, stopSequences, genParams)
 	if err != nil {
@@ -177,8 +210,15 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 	}
 
 	hasContent := false
+	var fullOutput strings.Builder
 	for chunk := range ch {
 		if chunk != "" {
+			fullOutput.WriteString(chunk)
+			if !firstToken {
+				ttft = time.Since(start)
+				firstToken = true
+			}
+
 			hasContent = true
 			tokens++
 			if err := stream.Send(&llmrunnerpb.ChatResponse{
@@ -190,13 +230,28 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 		}
 	}
 
+	wall := time.Since(start)
 	if s.inferenceMetrics != nil {
-		s.inferenceMetrics.Record(tokens, time.Since(start))
+		s.inferenceMetrics.Record(tokens, wall, ttft)
+	}
+
+	if hasContent {
+		_, _, tps, ttftMs := s.inferenceMetrics.Get()
+		logger.V("inference session_id=%d trace_id=%q tokens=%d wall_ms=%.1f ttft_ms=%.1f tps=%.1f sem=%d/%d", sessionID, traceID, tokens, wall.Seconds()*1000, ttftMs, tps, semInUse, semCap)
 	}
 
 	if !hasContent {
 		s.maybeUnloadAfterRPC()
 		return status.Error(codes.Internal, "модель не вернула ответ")
+	}
+
+	if genParams != nil && len(genParams.Tools) > 0 {
+		if blob := ExtractToolActionBlob(strings.TrimSpace(fullOutput.String())); blob != "" {
+			b := blob
+			if err := stream.Send(&llmrunnerpb.ChatResponse{ToolActionJson: &b, Done: false}); err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := stream.Send(&llmrunnerpb.ChatResponse{Done: true}); err != nil {
@@ -225,6 +280,8 @@ func (s *Server) Embed(ctx context.Context, req *llmrunnerpb.EmbedRequest) (*llm
 	if model == "" {
 		model = s.defaultModel
 	}
+
+	logger.V("Embed: trace_id=%q model=%q", incomingTraceID(ctx), model)
 
 	if s.sem != nil {
 		select {
@@ -269,6 +326,8 @@ func (s *Server) EmbedBatch(ctx context.Context, req *llmrunnerpb.EmbedBatchRequ
 	if model == "" {
 		model = s.defaultModel
 	}
+
+	logger.V("EmbedBatch: trace_id=%q model=%q n=%d", incomingTraceID(ctx), model, len(texts))
 
 	defer s.maybeUnloadAfterRPC()
 

@@ -6,9 +6,9 @@ type Tool struct {
 }
 
 type ToolFunction struct {
-	Name        string                 `json:"name"`        // Имя функции (должно быть корректным идентификатором)
-	Description string                 `json:"description"` // Человекочитаемое описание
-	Parameters  map[string]interface{} `json:"parameters"`  // json-схема параметров
+	Name        string         `json:"name"`        // Имя функции (должно быть корректным идентификатором)
+	Description string         `json:"description"` // Человекочитаемое описание
+	Parameters  map[string]any `json:"parameters"`  // json-схема параметров
 }
 
 type ToolCall struct {

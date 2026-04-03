@@ -10,6 +10,7 @@ type InferenceMetrics struct {
 	lastTokens       int64
 	lastLatencyMs    float64
 	lastTokensPerSec float64
+	lastTTFTms       float64
 	lastAt           time.Time
 }
 
@@ -17,7 +18,7 @@ func NewInferenceMetrics() *InferenceMetrics {
 	return &InferenceMetrics{}
 }
 
-func (m *InferenceMetrics) Record(tokens int64, duration time.Duration) {
+func (m *InferenceMetrics) Record(tokens int64, duration time.Duration, ttft time.Duration) {
 	if tokens < 0 {
 		tokens = 0
 	}
@@ -28,17 +29,23 @@ func (m *InferenceMetrics) Record(tokens int64, duration time.Duration) {
 		tps = float64(tokens) / sec
 	}
 
+	var ttftMs float64
+	if ttft > 0 {
+		ttftMs = ttft.Seconds() * 1000
+	}
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.lastTokens = tokens
 	m.lastLatencyMs = duration.Seconds() * 1000
 	m.lastTokensPerSec = tps
+	m.lastTTFTms = ttftMs
 	m.lastAt = time.Now()
 }
 
-func (m *InferenceMetrics) Get() (tokens int64, latencyMs float64, tokensPerSec float64) {
+func (m *InferenceMetrics) Get() (tokens int64, latencyMs float64, tokensPerSec float64, ttftMs float64) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.lastTokens, m.lastLatencyMs, m.lastTokensPerSec
+	return m.lastTokens, m.lastLatencyMs, m.lastTokensPerSec, m.lastTTFTms
 }

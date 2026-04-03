@@ -8,7 +8,7 @@ type ChatOptions struct {
 	Seed               *int     // Сид для воспроизводимой генерации (nil = случайный)
 	StopWords          []string // Дополнительные стоп-последовательности сверх значений модели по умолчанию
 	ChatTemplate       string
-	ChatTemplateKwargs map[string]interface{}
+	ChatTemplateKwargs map[string]any
 	EnableThinking     *bool           // Включить/выключить вывод reasoning (nil = значение модели по умолчанию)
 	ReasoningBudget    *int            // Лимит токенов для reasoning (-1 = без ограничений, 0 = отключено)
 	ReasoningFormat    ReasoningFormat // Как обрабатывать reasoning-контент

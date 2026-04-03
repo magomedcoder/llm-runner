@@ -23,7 +23,7 @@ type Options struct {
 	Context   context.Context
 }
 
-func logf(opts Options, format string, args ...interface{}) {
+func logf(opts Options, format string, args ...any) {
 	w := opts.LogOutput
 	if w == nil {
 		w = os.Stdout

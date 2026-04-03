@@ -71,7 +71,7 @@ func TestWriteModelManifest_alias(t *testing.T) {
 		From:   "Base.gguf",
 		System: "x",
 		Parameter: &ModelYAMLParameter{
-			TopP: ptrFloat64(0.9),
+			TopP: new(0.9),
 		},
 	}
 

@@ -29,11 +29,11 @@ func ParseLevel(s string) int {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "debug":
 		return LevelDebug
-	case "verbose":
+	case "verbose", "v":
 		return LevelVerbose
-	case "info":
+	case "info", "i":
 		return LevelInfo
-	case "warn", "warning":
+	case "warn", "warning", "w":
 		return LevelWarning
 	case "error", "e":
 		return LevelError
