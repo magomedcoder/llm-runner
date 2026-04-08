@@ -23,6 +23,7 @@ type Config struct {
 	Database                     DatabaseConfig
 	JWT                          JWTConfig
 	Runners                      RunnersConfig
+	MCP                          MCPConfig
 	DataDir                      string `yaml:"data_dir"`
 	AttachmentHydrateParallelism int    `yaml:"attachment_hydrate_parallelism"`
 	LogLevel                     string `yaml:"log_level"`
@@ -162,10 +163,16 @@ type yamlRoot struct {
 	Database                     databaseYAML      `yaml:"database"`
 	JWT                          jwtYAML           `yaml:"jwt"`
 	Runners                      *runnersBlockYAML `yaml:"runners"`
+	MCP                          *mcpYAML          `yaml:"mcp"`
 	DataDir                      string            `yaml:"data_dir"`
 	AttachmentHydrateParallelism int               `yaml:"attachment_hydrate_parallelism"`
 	LogLevel                     string            `yaml:"log_level"`
 	MinClientBuild               int32
+}
+
+type mcpYAML struct {
+	HTTPAllowAny   bool     `yaml:"http_allow_any"`
+	HTTPAllowHosts []string `yaml:"http_allow_hosts"`
 }
 
 type jwtYAML struct {
@@ -335,6 +342,12 @@ func mergeYAML(dst *Config, raw *yamlRoot) error {
 	}
 	if err := mergeRunnersFromYAML(dst, raw.Runners); err != nil {
 		return err
+	}
+	if raw.MCP != nil {
+		dst.MCP.HTTPAllowAny = raw.MCP.HTTPAllowAny
+		if len(raw.MCP.HTTPAllowHosts) > 0 {
+			dst.MCP.HTTPAllowHosts = append([]string(nil), raw.MCP.HTTPAllowHosts...)
+		}
 	}
 	if dd := strings.TrimSpace(raw.DataDir); dd != "" {
 		dst.DataDir = dd

@@ -24,6 +24,7 @@ func (r *chatSessionRepository) Create(ctx context.Context, session *domain.Chat
 		Title:            session.Title,
 		SelectedRunnerID: session.SelectedRunnerID,
 		StopSequences:    pq.StringArray{},
+		MCPSettings:      domain.DefaultMCPSessionSettingsJSON,
 		CreatedAt:        session.CreatedAt,
 		UpdatedAt:        session.UpdatedAt,
 	}

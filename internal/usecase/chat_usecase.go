@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/mcpclient"
 	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/pkg/document"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -95,6 +97,8 @@ type ChatUseCase struct {
 	historySummaryCache          *historySummaryCache
 	attachmentHydrateParallelism int
 	webSearchSettingsRepo        domain.WebSearchSettingsRepository
+	mcpServerRepo                domain.MCPServerRepository
+	mcpToolsListCache            *mcpclient.ToolsListCache
 }
 
 func NewChatUseCase(
@@ -114,6 +118,8 @@ func NewChatUseCase(
 	defaultRunnerAddr string,
 	attachmentHydrateParallelism int,
 	webSearchSettingsRepo domain.WebSearchSettingsRepository,
+	mcpServerRepo domain.MCPServerRepository,
+	mcpToolsListCache *mcpclient.ToolsListCache,
 ) *ChatUseCase {
 	return &ChatUseCase{
 		chatTx:                       chatTx,
@@ -132,6 +138,8 @@ func NewChatUseCase(
 		defaultRunnerAddr:            strings.TrimSpace(defaultRunnerAddr),
 		historySummaryCache:          newHistorySummaryCache(512),
 		webSearchSettingsRepo:        webSearchSettingsRepo,
+		mcpServerRepo:                mcpServerRepo,
+		mcpToolsListCache:            mcpToolsListCache,
 		attachmentHydrateParallelism: normalizeAttachmentHydrateParallelism(attachmentHydrateParallelism),
 	}
 }
@@ -302,6 +310,110 @@ func (c *ChatUseCase) maybeInjectWebSearchTool(ctx context.Context, genParams *d
 	genParams.Tools = append(genParams.Tools, webSearchToolDefinition())
 }
 
+func (c *ChatUseCase) maybeInjectMCPTools(ctx context.Context, genParams *domain.GenerationParams, settings *domain.ChatSessionSettings, userID int) {
+	if genParams == nil || settings == nil || !settings.MCPEnabled || len(settings.MCPServerIDs) == 0 || c.mcpServerRepo == nil {
+		return
+	}
+
+	allowed := allowedToolNameSet(genParams.Tools)
+	for _, sid := range settings.MCPServerIDs {
+		if sid <= 0 {
+			continue
+		}
+
+		srv, err := c.mcpServerRepo.GetByIDAccessible(ctx, sid, userID)
+		if err != nil || srv == nil || !srv.Enabled {
+			if err != nil {
+				logger.W("MCP: сервер id=%d: %v", sid, err)
+			}
+			continue
+		}
+
+		declared, err := c.mcpToolsListCache.ListToolsCached(ctx, srv, mcpclient.DefaultToolsListCacheTTL)
+		if err != nil {
+			logger.W("MCP: tools/list id=%d: %v", sid, err)
+			continue
+		}
+
+		prefix := strings.TrimSpace(srv.Name)
+		for _, t := range declared {
+			alias := mcpclient.ToolAlias(sid, t.Name)
+			n := normalizeToolName(alias)
+			if _, dup := allowed[n]; dup {
+				continue
+			}
+
+			allowed[n] = struct{}{}
+			desc := strings.TrimSpace(t.Description)
+			if prefix != "" {
+				desc = "[MCP " + prefix + "] " + desc
+			} else {
+				desc = "[MCP #" + strconv.FormatInt(sid, 10) + "] " + desc
+			}
+
+			genParams.Tools = append(genParams.Tools, domain.Tool{
+				Name:           alias,
+				Description:    strings.TrimSpace(desc),
+				ParametersJSON: t.ParametersJSON,
+			})
+		}
+	}
+}
+
+func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int64, mcpToolName string, params json.RawMessage) (string, error) {
+	if c.mcpServerRepo == nil {
+		return "", fmt.Errorf("MCP недоступен")
+	}
+
+	settings, err := c.sessionSettingsRepo.GetBySessionID(ctx, sessionID)
+	if err != nil {
+		return "", err
+	}
+
+	if settings == nil || !settings.MCPEnabled {
+		return "", fmt.Errorf("MCP отключён для этой сессии")
+	}
+
+	allowed := false
+	for _, id := range settings.MCPServerIDs {
+		if id == serverID {
+			allowed = true
+			break
+		}
+	}
+
+	if !allowed {
+		return "", fmt.Errorf("этот MCP-сервер не выбран для сессии")
+	}
+
+	sess, err := c.sessionRepo.GetById(ctx, sessionID)
+	if err != nil || sess == nil {
+		return "", fmt.Errorf("сессия не найдена")
+	}
+
+	srv, err := c.mcpServerRepo.GetByIDAccessible(ctx, serverID, sess.UserId)
+	if err != nil {
+		return "", err
+	}
+
+	if srv == nil || !srv.Enabled {
+		return "", fmt.Errorf("MCP-сервер недоступен")
+	}
+
+	return runFnWithContext(ctx, func() (string, error) {
+		t0 := time.Now()
+		out, err := mcpclient.CallTool(ctx, srv, mcpToolName, params)
+		d := time.Since(t0)
+		if err != nil {
+			logger.W("MCP tools/call: session=%d server_id=%d tool=%q duration=%s err=%v", sessionID, serverID, mcpToolName, d, err)
+		} else {
+			logger.I("MCP tools/call: session=%d server_id=%d tool=%q duration=%s", sessionID, serverID, mcpToolName, d)
+		}
+
+		return out, err
+	})
+}
+
 func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, userMessage string, attachmentFileID *int64) (chan ChatStreamChunk, error) {
 	logger.D("SendMessage: session=%d user=%d", sessionId, userId)
 	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
@@ -366,6 +478,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
 	c.maybeInjectWebSearchTool(ctx, genParams, settings)
+	c.maybeInjectMCPTools(ctx, genParams, settings, userId)
 
 	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
 		logger.E("SendMessage: подгрузка вложений для раннера: %v", err)
@@ -454,6 +567,9 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 
 	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
 	if len(parseToolsJSON(settings.ToolsJSON)) > 0 {
+		return nil, domain.ErrRegenerateToolsNotSupported
+	}
+	if settings.MCPEnabled && len(settings.MCPServerIDs) > 0 {
 		return nil, domain.ErrRegenerateToolsNotSupported
 	}
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
@@ -565,6 +681,9 @@ func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int,
 
 	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
 	if len(parseToolsJSON(settings.ToolsJSON)) > 0 {
+		return nil, domain.ErrRegenerateToolsNotSupported
+	}
+	if settings.MCPEnabled && len(settings.MCPServerIDs) > 0 {
 		return nil, domain.ErrRegenerateToolsNotSupported
 	}
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
@@ -691,6 +810,7 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
 	c.maybeInjectWebSearchTool(ctx, genParams, settings)
+	c.maybeInjectMCPTools(ctx, genParams, settings, userId)
 
 	messagesForLLM := make([]*domain.Message, 0, len(messages)+1)
 	messagesForLLM = append(messagesForLLM, chatSessionSystemMessage(sessionId, settings))
@@ -974,6 +1094,8 @@ func (c *ChatUseCase) UpdateSessionSettings(
 	modelReasoningEnabled bool,
 	webSearchEnabled bool,
 	webSearchProvider string,
+	mcpEnabled bool,
+	mcpServerIDs []int64,
 ) (*domain.ChatSessionSettings, error) {
 	_, err := c.verifySessionOwnership(ctx, userId, sessionID)
 	if err != nil {
@@ -981,6 +1103,20 @@ func (c *ChatUseCase) UpdateSessionSettings(
 	}
 	if stopSequences == nil {
 		stopSequences = []string{}
+	}
+	if mcpServerIDs == nil {
+		mcpServerIDs = []int64{}
+	}
+	for _, mid := range mcpServerIDs {
+		if mid <= 0 {
+			continue
+		}
+		if _, err := c.mcpServerRepo.GetByIDAccessible(ctx, mid, userId); err != nil {
+			if errors.Is(err, domain.ErrNotFound) {
+				return nil, fmt.Errorf("недопустимый MCP-сервер id=%d", mid)
+			}
+			return nil, err
+		}
 	}
 	settings := &domain.ChatSessionSettings{
 		SessionID:             sessionID,
@@ -997,6 +1133,8 @@ func (c *ChatUseCase) UpdateSessionSettings(
 		ModelReasoningEnabled: modelReasoningEnabled,
 		WebSearchEnabled:      webSearchEnabled,
 		WebSearchProvider:     normalizeWebSearchProvider(webSearchProvider),
+		MCPEnabled:            mcpEnabled,
+		MCPServerIDs:          mcpServerIDs,
 	}
 	if err := c.sessionSettingsRepo.Upsert(ctx, settings); err != nil {
 		return nil, err

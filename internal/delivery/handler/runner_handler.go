@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -10,6 +11,7 @@ import (
 	"github.com/magomedcoder/gen/api/pb/runnerpb"
 	"github.com/magomedcoder/gen/config"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/mcpclient"
 	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
@@ -29,6 +31,8 @@ type RunnerHandler struct {
 	cfg                 *config.Config
 	runnerRepo          domain.RunnerRepository
 	webSearchSettingsUC *usecase.WebSearchSettingsUseCase
+	mcpServersUC        *usecase.MCPServersUseCase
+	mcpToolsListCache   *mcpclient.ToolsListCache
 }
 
 func NewRunnerHandler(
@@ -38,6 +42,8 @@ func NewRunnerHandler(
 	cfg *config.Config,
 	runnerRepo domain.RunnerRepository,
 	webSearchSettingsUC *usecase.WebSearchSettingsUseCase,
+	mcpServersUC *usecase.MCPServersUseCase,
+	mcpToolsListCache *mcpclient.ToolsListCache,
 ) *RunnerHandler {
 	return &RunnerHandler{
 		registry:            registry,
@@ -46,6 +52,8 @@ func NewRunnerHandler(
 		cfg:                 cfg,
 		runnerRepo:          runnerRepo,
 		webSearchSettingsUC: webSearchSettingsUC,
+		mcpServersUC:        mcpServersUC,
+		mcpToolsListCache:   mcpToolsListCache,
 	}
 }
 
@@ -406,4 +414,499 @@ func (h *RunnerHandler) RegisterRunnerWithToken(ctx context.Context, _ *llmrunne
 
 func (h *RunnerHandler) UnregisterRunnerWithToken(ctx context.Context, _ *llmrunnerpb.RunnerUnregisterRequest) (*llmrunnerpb.Empty, error) {
 	return nil, status.Error(codes.FailedPrecondition, "саморегистрация отключена: удалите раннер в админке")
+}
+
+func mapDomainMCPServerToProto(s *domain.MCPServer) *runnerpb.MCPServer {
+	if s == nil {
+		return nil
+	}
+
+	var args []string
+	_ = json.Unmarshal([]byte(s.ArgsJSON), &args)
+
+	var env map[string]string
+	_ = json.Unmarshal([]byte(s.EnvJSON), &env)
+
+	if env == nil {
+		env = map[string]string{}
+	}
+
+	var headers map[string]string
+	_ = json.Unmarshal([]byte(s.HeadersJSON), &headers)
+	if headers == nil {
+		headers = map[string]string{}
+	}
+
+	ow := int32(0)
+	if s.UserID != nil {
+		ow = int32(*s.UserID)
+	}
+
+	return &runnerpb.MCPServer{
+		Id:             s.ID,
+		Name:           s.Name,
+		Enabled:        s.Enabled,
+		Transport:      s.Transport,
+		Command:        s.Command,
+		Args:           args,
+		Env:            maskSecretMap(env),
+		Url:            s.URL,
+		Headers:        maskSecretMap(headers),
+		TimeoutSeconds: s.TimeoutSeconds,
+		OwnerUserId:    ow,
+	}
+}
+
+func domainMCPServerFromCreate(req *runnerpb.CreateMCPServerRequest) (*domain.MCPServer, error) {
+	if req == nil {
+		return nil, status.Error(codes.InvalidArgument, "пустой запрос")
+	}
+
+	argsB, err := json.Marshal(req.GetArgs())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "args: "+err.Error())
+	}
+
+	env := req.GetEnv()
+	if env == nil {
+		env = map[string]string{}
+	}
+
+	envB, err := json.Marshal(env)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "env: "+err.Error())
+	}
+
+	headers := req.GetHeaders()
+	if headers == nil {
+		headers = map[string]string{}
+	}
+
+	headersB, err := json.Marshal(headers)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "headers: "+err.Error())
+	}
+
+	return &domain.MCPServer{
+		Name:           req.GetName(),
+		Enabled:        req.GetEnabled(),
+		Transport:      strings.TrimSpace(req.GetTransport()),
+		Command:        strings.TrimSpace(req.GetCommand()),
+		ArgsJSON:       string(argsB),
+		EnvJSON:        string(envB),
+		URL:            strings.TrimSpace(req.GetUrl()),
+		HeadersJSON:    string(headersB),
+		TimeoutSeconds: req.GetTimeoutSeconds(),
+	}, nil
+}
+
+func (h *RunnerHandler) ListMCPServers(ctx context.Context, _ *commonpb.Empty) (*runnerpb.ListMCPServersResponse, error) {
+	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	list, err := h.mcpServersUC.ListGlobal(ctx)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	out := make([]*runnerpb.MCPServer, 0, len(list))
+	for _, s := range list {
+		out = append(out, mapDomainMCPServerToProto(s))
+	}
+
+	return &runnerpb.ListMCPServersResponse{Servers: out}, nil
+}
+
+func (h *RunnerHandler) GetMCPServer(ctx context.Context, req *runnerpb.GetMCPServerRequest) (*runnerpb.MCPServer, error) {
+	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	s, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return mapDomainMCPServerToProto(s), nil
+}
+
+func (h *RunnerHandler) CreateMCPServer(ctx context.Context, req *runnerpb.CreateMCPServerRequest) (*runnerpb.MCPServer, error) {
+	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	d, err := domainMCPServerFromCreate(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	s, err := h.mcpServersUC.CreateGlobal(ctx, d)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if h.mcpToolsListCache != nil {
+		h.mcpToolsListCache.InvalidateServerID(s.ID)
+	}
+
+	return mapDomainMCPServerToProto(s), nil
+}
+
+func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.UpdateMCPServerRequest) (*runnerpb.MCPServer, error) {
+	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	prev, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	var prevEnv, prevHdr map[string]string
+	_ = json.Unmarshal([]byte(prev.EnvJSON), &prevEnv)
+	_ = json.Unmarshal([]byte(prev.HeadersJSON), &prevHdr)
+	argsB, err := json.Marshal(req.GetArgs())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "args: "+err.Error())
+	}
+
+	env := req.GetEnv()
+	if env == nil {
+		env = map[string]string{}
+	}
+
+	env = mergeMaskedSecretMaps(env, prevEnv)
+	envB, err := json.Marshal(env)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "env: "+err.Error())
+	}
+
+	headers := req.GetHeaders()
+	if headers == nil {
+		headers = map[string]string{}
+	}
+
+	headers = mergeMaskedSecretMaps(headers, prevHdr)
+	headersB, err := json.Marshal(headers)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "headers: "+err.Error())
+	}
+
+	d := &domain.MCPServer{
+		ID:             req.GetId(),
+		Name:           req.GetName(),
+		Enabled:        req.GetEnabled(),
+		Transport:      strings.TrimSpace(req.GetTransport()),
+		Command:        strings.TrimSpace(req.GetCommand()),
+		ArgsJSON:       string(argsB),
+		EnvJSON:        string(envB),
+		URL:            strings.TrimSpace(req.GetUrl()),
+		HeadersJSON:    string(headersB),
+		TimeoutSeconds: req.GetTimeoutSeconds(),
+	}
+
+	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := h.mcpServersUC.UpdateGlobal(ctx, d); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	s, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if h.mcpToolsListCache != nil {
+		h.mcpToolsListCache.InvalidateServerID(req.GetId())
+	}
+
+	return mapDomainMCPServerToProto(s), nil
+}
+
+func (h *RunnerHandler) DeleteMCPServer(ctx context.Context, req *runnerpb.DeleteMCPServerRequest) (*commonpb.Empty, error) {
+	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	id := req.GetId()
+	if err := h.mcpServersUC.DeleteGlobal(ctx, id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if h.mcpToolsListCache != nil {
+		h.mcpToolsListCache.InvalidateServerID(id)
+	}
+
+	return &commonpb.Empty{}, nil
+}
+
+func (h *RunnerHandler) ListUserMCPServers(ctx context.Context, _ *commonpb.Empty) (*runnerpb.ListMCPServersResponse, error) {
+	user, err := GetUserFromContext(ctx, h.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	list, err := h.mcpServersUC.ListForUser(ctx, user.Id)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	out := make([]*runnerpb.MCPServer, 0, len(list))
+	for _, s := range list {
+		out = append(out, mapDomainMCPServerToProto(s))
+	}
+
+	return &runnerpb.ListMCPServersResponse{Servers: out}, nil
+}
+
+func (h *RunnerHandler) GetUserMCPServer(ctx context.Context, req *runnerpb.GetMCPServerRequest) (*runnerpb.MCPServer, error) {
+	user, err := GetUserFromContext(ctx, h.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	s, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return mapDomainMCPServerToProto(s), nil
+}
+
+func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.CreateMCPServerRequest) (*runnerpb.MCPServer, error) {
+	user, err := GetUserFromContext(ctx, h.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	d, err := domainMCPServerFromCreate(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	s, err := h.mcpServersUC.CreateOwned(ctx, d, user.Id)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if h.mcpToolsListCache != nil {
+		h.mcpToolsListCache.InvalidateServerID(s.ID)
+	}
+
+	return mapDomainMCPServerToProto(s), nil
+}
+
+func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.UpdateMCPServerRequest) (*runnerpb.MCPServer, error) {
+	user, err := GetUserFromContext(ctx, h.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	prev, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if prev.UserID == nil || *prev.UserID != user.Id {
+		return nil, status.Error(codes.PermissionDenied, "можно редактировать только свои MCP-серверы")
+	}
+
+	var prevEnv, prevHdr map[string]string
+	_ = json.Unmarshal([]byte(prev.EnvJSON), &prevEnv)
+	_ = json.Unmarshal([]byte(prev.HeadersJSON), &prevHdr)
+	argsB, err := json.Marshal(req.GetArgs())
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "args: "+err.Error())
+	}
+
+	env := req.GetEnv()
+	if env == nil {
+		env = map[string]string{}
+	}
+
+	env = mergeMaskedSecretMaps(env, prevEnv)
+	envB, err := json.Marshal(env)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "env: "+err.Error())
+	}
+
+	headers := req.GetHeaders()
+	if headers == nil {
+		headers = map[string]string{}
+	}
+
+	headers = mergeMaskedSecretMaps(headers, prevHdr)
+	headersB, err := json.Marshal(headers)
+	if err != nil {
+		return nil, status.Error(codes.InvalidArgument, "headers: "+err.Error())
+	}
+
+	d := &domain.MCPServer{
+		ID:             req.GetId(),
+		Name:           req.GetName(),
+		Enabled:        req.GetEnabled(),
+		Transport:      strings.TrimSpace(req.GetTransport()),
+		Command:        strings.TrimSpace(req.GetCommand()),
+		ArgsJSON:       string(argsB),
+		EnvJSON:        string(envB),
+		URL:            strings.TrimSpace(req.GetUrl()),
+		HeadersJSON:    string(headersB),
+		TimeoutSeconds: req.GetTimeoutSeconds(),
+	}
+
+	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if err := h.mcpServersUC.UpdateOwned(ctx, d, user.Id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	s, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
+	if err != nil {
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if h.mcpToolsListCache != nil {
+		h.mcpToolsListCache.InvalidateServerID(req.GetId())
+	}
+
+	return mapDomainMCPServerToProto(s), nil
+}
+
+func (h *RunnerHandler) DeleteUserMCPServer(ctx context.Context, req *runnerpb.DeleteMCPServerRequest) (*commonpb.Empty, error) {
+	user, err := GetUserFromContext(ctx, h.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	prev, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if prev.UserID == nil || *prev.UserID != user.Id {
+		return nil, status.Error(codes.PermissionDenied, "можно удалять только свои MCP-серверы")
+	}
+
+	id := req.GetId()
+	if err := h.mcpServersUC.DeleteOwned(ctx, id, user.Id); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	if h.mcpToolsListCache != nil {
+		h.mcpToolsListCache.InvalidateServerID(id)
+	}
+
+	return &commonpb.Empty{}, nil
 }

@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/mcpclient"
 	"github.com/magomedcoder/gen/pkg/logger"
 )
 
@@ -585,10 +586,7 @@ func (c *ChatUseCase) runChatToolLoop(
 		toolResults := make([]string, len(execRows))
 		for i, row := range execRows {
 			name := normalizeToolName(row.ToolName)
-			st := strings.TrimSpace(row.ToolName)
-			if st == "" {
-				st = name
-			}
+			st := c.toolProgressDisplayName(ctx, sessionID, name, row.ToolName)
 
 			if !send(ChatStreamChunk{Kind: StreamChunkKindToolStatus, Text: "Выполняется: " + st, ToolName: st, MessageID: 0}) {
 				return
@@ -646,6 +644,39 @@ func (c *ChatUseCase) runChatToolLoop(
 	sendErr(fmt.Errorf("превышено число итераций tool-calling (%d)", maxToolRounds))
 }
 
+func (c *ChatUseCase) toolProgressDisplayName(ctx context.Context, sessionID int64, normalizedName string, rawToolName string) string {
+	n := normalizeToolName(normalizedName)
+	if sid, orig, ok := mcpclient.ParseToolAlias(n); ok {
+		label := fmt.Sprintf("MCP #%d", sid)
+		if c.mcpServerRepo != nil {
+			var uid int
+			if sess, err := c.sessionRepo.GetById(ctx, sessionID); err == nil && sess != nil {
+				uid = sess.UserId
+			}
+
+			if srv, err := c.mcpServerRepo.GetByIDAccessible(ctx, sid, uid); err == nil && srv != nil {
+				if nm := strings.TrimSpace(srv.Name); nm != "" {
+					label = "MCP  " + nm
+				}
+			}
+		}
+
+		orig = strings.TrimSpace(orig)
+		if orig != "" {
+			return label + "  " + orig
+		}
+
+		return label
+	}
+
+	st := strings.TrimSpace(rawToolName)
+	if st != "" {
+		return st
+	}
+
+	return n
+}
+
 func webSearchToolDefinition() domain.Tool {
 	return domain.Tool{
 		Name:           "web_search",
@@ -667,6 +698,9 @@ func (c *ChatUseCase) executeDeclaredTool(ctx context.Context, userID int, sessi
 	case "web_search":
 		return c.toolWebSearch(ctx, userID, sessionID, params)
 	default:
+		if sid, orig, ok := mcpclient.ParseToolAlias(nameNorm); ok {
+			return c.toolMCP(ctx, sessionID, sid, orig, params)
+		}
 		return "", fmt.Errorf("инструмент %q пока не реализован на сервере", nameNorm)
 	}
 }

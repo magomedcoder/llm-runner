@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:gen/core/layout/responsive.dart';
 import 'package:gen/presentation/screens/admin/runners_admin_screen.dart';
+import 'package:gen/presentation/screens/admin/mcp_admin_screen.dart';
 import 'package:gen/presentation/screens/admin/web_search_admin_screen.dart';
 import 'package:gen/presentation/screens/admin/users_admin_screen.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
@@ -26,6 +27,11 @@ class _AdminScreenState extends State<AdminScreen> {
       label: 'Поиск',
       icon: Icons.travel_explore_outlined,
       page: WebSearchAdminScreen(),
+    ),
+    (
+      label: 'MCP',
+      icon: Icons.extension_outlined,
+      page: McpAdminScreen(),
     ),
     (
       label: 'Пользователи',

@@ -774,6 +774,8 @@ func mapSessionSettings(s *domain.ChatSessionSettings) *chatpb.SessionSettings {
 		ModelReasoningEnabled: s.ModelReasoningEnabled,
 		WebSearchEnabled:      s.WebSearchEnabled,
 		WebSearchProvider:     s.WebSearchProvider,
+		McpEnabled:            s.MCPEnabled,
+		McpServerIds:          s.MCPServerIDs,
 	}
 }
 
@@ -813,6 +815,8 @@ func (c *ChatHandler) UpdateSessionSettings(ctx context.Context, req *chatpb.Upd
 		req.GetModelReasoningEnabled(),
 		req.GetWebSearchEnabled(),
 		req.GetWebSearchProvider(),
+		req.GetMcpEnabled(),
+		req.GetMcpServerIds(),
 	)
 	if err != nil {
 		return nil, ToStatusError(codes.Internal, err)

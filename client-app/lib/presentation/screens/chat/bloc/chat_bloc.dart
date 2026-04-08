@@ -187,6 +187,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     on<ChatUpdateSessionSettings>(_onUpdateSessionSettings);
     on<ChatSetModelReasoning>(_onSetModelReasoning);
     on<ChatSetWebSearch>(_onSetWebSearch);
+    on<ChatSetMcpDraft>(_onSetMcpDraft);
   }
 
   Future<void> _onShowUserMessageEdits(
@@ -714,6 +715,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               draftModelReasoningEnabled: false,
               draftWebSearchEnabled: false,
               draftWebSearchProvider: '',
+              draftMcpEnabled: false,
+              draftMcpServerIds: const [],
             ));
         } catch (e) {
           Logs().e('ChatBloc: ошибка загрузки сессий', exception: e);
@@ -791,6 +794,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
       draftModelReasoningEnabled: false,
       draftWebSearchEnabled: false,
       draftWebSearchProvider: '',
+      draftMcpEnabled: false,
+      draftMcpServerIds: const [],
     ));
   }
 
@@ -994,6 +999,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
     final draftReasoning = state.draftModelReasoningEnabled;
     final draftWebSearch = state.draftWebSearchEnabled;
     final draftWebProv = state.draftWebSearchProvider;
+    final draftMcp = state.draftMcpEnabled;
+    final draftMcpIds = state.draftMcpServerIds;
     if (sessionId == null) {
       try {
         final session = await createSessionUseCase();
@@ -1006,7 +1013,7 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
           sessions: updatedSessions,
           messages: const [],
         ));
-        if (draftReasoning || draftWebSearch) {
+        if (draftReasoning || draftWebSearch || draftMcp) {
           try {
             final settings = await updateSessionSettingsUseCase(
               sessionId: sessionId,
@@ -1023,13 +1030,15 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
               modelReasoningEnabled: draftReasoning,
               webSearchEnabled: draftWebSearch,
               webSearchProvider: draftWebProv,
+              mcpEnabled: draftMcp,
+              mcpServerIds: draftMcpIds,
             );
             emit(state.copyWith(sessionSettings: settings));
           } catch (e) {
             requestLogoutIfUnauthorized(e, authBloc);
             emit(state.copyWith(
               error:
-                  'Не удалось сохранить настройки чата (размышление / поиск)',
+                  'Не удалось сохранить настройки чата (размышление / поиск / MCP)',
               isLoading: false,
             ));
             return;
@@ -1737,6 +1746,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         modelReasoningEnabled: event.modelReasoningEnabled,
         webSearchEnabled: event.webSearchEnabled,
         webSearchProvider: event.webSearchProvider,
+        mcpEnabled: event.mcpEnabled,
+        mcpServerIds: event.mcpServerIds,
       );
       emit(state.copyWith(sessionSettings: settings));
     } catch (e) {
@@ -1773,6 +1784,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         modelReasoningEnabled: event.enabled,
         webSearchEnabled: cur.webSearchEnabled,
         webSearchProvider: cur.webSearchProvider,
+        mcpEnabled: cur.mcpEnabled,
+        mcpServerIds: cur.mcpServerIds,
       );
       emit(state.copyWith(sessionSettings: settings));
     } catch (e) {
@@ -1816,6 +1829,8 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         modelReasoningEnabled: cur.modelReasoningEnabled,
         webSearchEnabled: event.enabled,
         webSearchProvider: prov,
+        mcpEnabled: cur.mcpEnabled,
+        mcpServerIds: cur.mcpServerIds,
       );
       emit(state.copyWith(sessionSettings: settings));
     } catch (e) {
@@ -1823,6 +1838,13 @@ class ChatBloc extends Bloc<ChatEvent, ChatState> {
         error: 'Не удалось сохранить настройку «Поиск в интернете»',
       ));
     }
+  }
+
+  void _onSetMcpDraft(ChatSetMcpDraft event, Emitter<ChatState> emit) {
+    emit(state.copyWith(
+      draftMcpEnabled: event.enabled,
+      draftMcpServerIds: event.serverIds,
+    ));
   }
 
   Future<void> _onDeleteSession(

@@ -215,6 +215,28 @@ type WebSearchSettingsRepository interface {
 	Upsert(ctx context.Context, s *WebSearchSettings) error
 }
 
+type MCPServerRepository interface {
+	ListGlobal(ctx context.Context) ([]*MCPServer, error)
+
+	ListForUser(ctx context.Context, userID int) ([]*MCPServer, error)
+
+	GetByID(ctx context.Context, id int64) (*MCPServer, error)
+
+	GetByIDAccessible(ctx context.Context, id int64, userID int) (*MCPServer, error)
+
+	GetGlobalByID(ctx context.Context, id int64) (*MCPServer, error)
+
+	Create(ctx context.Context, s *MCPServer) (*MCPServer, error)
+
+	UpdateGlobal(ctx context.Context, s *MCPServer) error
+
+	UpdateOwned(ctx context.Context, s *MCPServer, ownerUserID int) error
+
+	DeleteGlobal(ctx context.Context, id int64) error
+
+	DeleteOwned(ctx context.Context, id int64, ownerUserID int) error
+}
+
 type RunnerRepository interface {
 	List(ctx context.Context) ([]Runner, error)
 

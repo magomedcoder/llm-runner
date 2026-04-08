@@ -358,17 +358,15 @@ class _ChatBubbleState extends State<ChatBubble> {
                           ),
                         },
                       ),
-                  if (isStreaming && message.content.isEmpty && (widget.streamingStatus?.trim().isNotEmpty ?? false))
+                  if (isStreaming && (widget.streamingStatus?.trim().isNotEmpty ?? false))
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: Text(
-                        widget.streamingStatus!.trim(),
-                        style: TextStyle(
-                          fontSize: 13,
-                          height: 1.35,
-                          color: messageTextColor.withValues(alpha: 0.85),
-                          fontStyle: FontStyle.italic,
-                        ),
+                      padding: EdgeInsets.only(
+                        bottom: 8,
+                        top: message.content.isNotEmpty ? 8 : 0,
+                      ),
+                      child: _ToolProgressLine(
+                        text: widget.streamingStatus!.trim(),
+                        messageTextColor: messageTextColor,
                       ),
                     ),
                   if (isStreaming)
@@ -586,6 +584,59 @@ class _ChatBubbleState extends State<ChatBubble> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _ToolProgressLine extends StatelessWidget {
+  const _ToolProgressLine({
+    required this.text,
+    required this.messageTextColor,
+  });
+
+  final String text;
+  final Color messageTextColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final lower = text.toLowerCase();
+    final isMcp = text.contains('MCP') || text.contains('MCP #');
+    final isWebSearch = lower.contains('web_search');
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (isMcp)
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(
+              Icons.extension_outlined,
+              size: 16,
+              color: messageTextColor.withValues(alpha: 0.8),
+            ),
+          )
+        else if (isWebSearch)
+          Padding(
+            padding: const EdgeInsets.only(top: 1),
+            child: Icon(
+              Icons.travel_explore,
+              size: 16,
+              color: messageTextColor.withValues(alpha: 0.8),
+            ),
+          ),
+        if (isMcp || isWebSearch) const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: messageTextColor.withValues(alpha: 0.85),
+              fontStyle: FontStyle.italic,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

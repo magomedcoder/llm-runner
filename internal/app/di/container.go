@@ -17,6 +17,7 @@ import (
 	"github.com/magomedcoder/gen/internal/bootstrap"
 	"github.com/magomedcoder/gen/internal/delivery/handler"
 	"github.com/magomedcoder/gen/internal/domain"
+	"github.com/magomedcoder/gen/internal/mcpclient"
 	"github.com/magomedcoder/gen/internal/provider"
 	"github.com/magomedcoder/gen/internal/repository/postgres"
 	"github.com/magomedcoder/gen/internal/service"
@@ -43,6 +44,13 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	}
 	logger.D("База данных доступна")
 
+	mcpclient.SetHTTPHostPolicy(func(host string) bool {
+		return cfg.MCPHTTPHostAllowed(host)
+	})
+	if cfg.MCP.HTTPAllowAny {
+		logger.W("MCP: mcp.http_allow_any включён - разрешены любые исходящие HTTP(S) хосты (не для продакшена)")
+	}
+
 	gormDB, err := provider.NewDB(ctx, &cfg.Database, cfg.LogLevel)
 	if err != nil {
 		return nil, fmt.Errorf("подключение к базе данных: %w", err)
@@ -67,6 +75,7 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	chatPreferenceRepo := postgres.NewChatPreferenceRepository(gormDB, runnerRepo)
 	chatSessionSettingsRepo := postgres.NewChatSessionSettingsRepository(gormDB)
 	webSearchSettingsRepo := postgres.NewWebSearchSettingsRepository(gormDB)
+	mcpServerRepo := postgres.NewMCPServerRepository(gormDB)
 	editorHistoryRepo := postgres.NewEditorHistoryRepository(gormDB)
 	messageRepo := postgres.NewMessageRepository(gormDB)
 	messageEditRepo := postgres.NewMessageEditRepository(gormDB)
@@ -96,8 +105,10 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	llmRepo := runnerPool
 
 	webSearchSettingsUC := usecase.NewWebSearchSettingsUseCase(webSearchSettingsRepo)
+	mcpServersUC := usecase.NewMCPServersUseCase(mcpServerRepo)
+	mcpToolsListCache := mcpclient.NewToolsListCache()
 
-	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, runnerRepo, llmRepo, runnerPool, runnerReg, filepath.Join(cfg.DataDir, "uploads"), cfg.DefaultRunnerAddress(), cfg.AttachmentHydrateParallelism, webSearchSettingsRepo)
+	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, runnerRepo, llmRepo, runnerPool, runnerReg, filepath.Join(cfg.DataDir, "uploads"), cfg.DefaultRunnerAddress(), cfg.AttachmentHydrateParallelism, webSearchSettingsRepo, mcpServerRepo, mcpToolsListCache)
 	editorUseCase := usecase.NewEditorUseCase(llmRepo, editorHistoryRepo, runnerRepo)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
@@ -109,7 +120,7 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 		chatHandler:   handler.NewChatHandler(cfg, chatUseCase, authUseCase),
 		editorHandler: handler.NewEditorHandler(editorUseCase, authUseCase),
 		userHandler:   handler.NewUserHandler(userUseCase, authUseCase),
-		runnerHandler: handler.NewRunnerHandler(runnerReg, runnerPool, authUseCase, cfg, runnerRepo, webSearchSettingsUC),
+		runnerHandler: handler.NewRunnerHandler(runnerReg, runnerPool, authUseCase, cfg, runnerRepo, webSearchSettingsUC, mcpServersUC, mcpToolsListCache),
 	}, nil
 }
 

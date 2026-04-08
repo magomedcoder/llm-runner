@@ -48,6 +48,8 @@ class ChatState extends Equatable {
   final bool draftModelReasoningEnabled;
   final bool draftWebSearchEnabled;
   final String draftWebSearchProvider;
+  final bool draftMcpEnabled;
+  final List<int> draftMcpServerIds;
 
   bool get isStreamingInCurrentSession =>
       isStreaming &&
@@ -95,6 +97,8 @@ class ChatState extends Equatable {
     this.draftModelReasoningEnabled = false,
     this.draftWebSearchEnabled = false,
     this.draftWebSearchProvider = '',
+    this.draftMcpEnabled = false,
+    this.draftMcpServerIds = const [],
   });
 
   ChatState copyWith({
@@ -142,6 +146,8 @@ class ChatState extends Equatable {
     bool? draftModelReasoningEnabled,
     bool? draftWebSearchEnabled,
     String? draftWebSearchProvider,
+    bool? draftMcpEnabled,
+    List<int>? draftMcpServerIds,
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
@@ -207,6 +213,8 @@ class ChatState extends Equatable {
           draftWebSearchEnabled ?? this.draftWebSearchEnabled,
       draftWebSearchProvider:
           draftWebSearchProvider ?? this.draftWebSearchProvider,
+      draftMcpEnabled: draftMcpEnabled ?? this.draftMcpEnabled,
+      draftMcpServerIds: draftMcpServerIds ?? this.draftMcpServerIds,
     );
   }
 
@@ -250,5 +258,7 @@ class ChatState extends Equatable {
     draftModelReasoningEnabled,
     draftWebSearchEnabled,
     draftWebSearchProvider,
+    draftMcpEnabled,
+    draftMcpServerIds,
   ];
 }

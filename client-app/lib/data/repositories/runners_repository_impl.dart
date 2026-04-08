@@ -1,3 +1,4 @@
+import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
@@ -71,4 +72,28 @@ class RunnersRepositoryImpl implements RunnersRepository {
   @override
   Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings) =>
       _remote.updateWebSearchSettings(settings);
+
+  @override
+  Future<List<McpServerEntity>> listMcpServers() => _remote.listMcpServers();
+
+  @override
+  Future<McpServerEntity> createMcpServer(McpServerEntity server) => _remote.createMcpServer(server);
+
+  @override
+  Future<McpServerEntity> updateMcpServer(McpServerEntity server) => _remote.updateMcpServer(server);
+
+  @override
+  Future<void> deleteMcpServer(int id) => _remote.deleteMcpServer(id);
+
+  @override
+  Future<List<McpServerEntity>> listUserMcpServers() => _remote.listUserMcpServers();
+
+  @override
+  Future<McpServerEntity> createUserMcpServer(McpServerEntity server) => _remote.createUserMcpServer(server);
+
+  @override
+  Future<McpServerEntity> updateUserMcpServer(McpServerEntity server) => _remote.updateUserMcpServer(server);
+
+  @override
+  Future<void> deleteUserMcpServer(int id) => _remote.deleteUserMcpServer(id);
 }

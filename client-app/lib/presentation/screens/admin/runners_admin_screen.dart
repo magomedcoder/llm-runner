@@ -365,12 +365,6 @@ class _RunnersAdminScreenState extends State<RunnersAdminScreen> {
                                   ),
                                 ),
                                 Text(
-                                  '·',
-                                  style: theme.textTheme.bodySmall?.copyWith(
-                                    color: theme.colorScheme.outline,
-                                  ),
-                                ),
-                                Text(
                                   _runnerModelCell(runner),
                                   style: theme.textTheme.bodySmall?.copyWith(
                                     color: theme.colorScheme.onSurfaceVariant,

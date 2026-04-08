@@ -1,3 +1,4 @@
+import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
 
@@ -38,4 +39,20 @@ abstract class RunnersRepository {
   Future<WebSearchSettingsEntity> getWebSearchSettings();
 
   Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings);
+
+  Future<List<McpServerEntity>> listMcpServers();
+
+  Future<McpServerEntity> createMcpServer(McpServerEntity server);
+
+  Future<McpServerEntity> updateMcpServer(McpServerEntity server);
+
+  Future<void> deleteMcpServer(int id);
+
+  Future<List<McpServerEntity>> listUserMcpServers();
+
+  Future<McpServerEntity> createUserMcpServer(McpServerEntity server);
+
+  Future<McpServerEntity> updateUserMcpServer(McpServerEntity server);
+
+  Future<void> deleteUserMcpServer(int id);
 }

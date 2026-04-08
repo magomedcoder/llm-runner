@@ -89,6 +89,8 @@ abstract interface class ChatRepository {
     required bool modelReasoningEnabled,
     required bool webSearchEnabled,
     required String webSearchProvider,
+    required bool mcpEnabled,
+    required List<int> mcpServerIds,
   });
 
   Future<String?> getSelectedRunner();

@@ -32,6 +32,26 @@ service RunnerService {
   rpc GetWebSearchSettings(common.Empty) returns (WebSearchSettingsResponse);
 
   rpc UpdateWebSearchSettings(UpdateWebSearchSettingsRequest) returns (WebSearchSettingsResponse);
+
+  rpc ListMCPServers(common.Empty) returns (ListMCPServersResponse);
+
+  rpc GetMCPServer(GetMCPServerRequest) returns (MCPServer);
+
+  rpc CreateMCPServer(CreateMCPServerRequest) returns (MCPServer);
+
+  rpc UpdateMCPServer(UpdateMCPServerRequest) returns (MCPServer);
+
+  rpc DeleteMCPServer(DeleteMCPServerRequest) returns (common.Empty);
+
+  rpc ListUserMCPServers(common.Empty) returns (ListMCPServersResponse);
+
+  rpc GetUserMCPServer(GetMCPServerRequest) returns (MCPServer);
+
+  rpc CreateUserMCPServer(CreateMCPServerRequest) returns (MCPServer);
+
+  rpc UpdateUserMCPServer(UpdateMCPServerRequest) returns (MCPServer);
+
+  rpc DeleteUserMCPServer(DeleteMCPServerRequest) returns (common.Empty);
 }
 
 message CreateRunnerRequest {
@@ -160,4 +180,55 @@ message UpdateWebSearchSettingsRequest {
   string google_search_engine_id = 6;
   string yandex_user = 7;
   string yandex_key = 8;
+}
+
+message MCPServer {
+  int64 id = 1;
+  string name = 2;
+  bool enabled = 3;
+  string transport = 4;
+  string command = 5;
+  repeated string args = 6;
+  map<string, string> env = 7;
+  string url = 8;
+  map<string, string> headers = 9;
+  int32 timeout_seconds = 10;
+  int32 owner_user_id = 11;
+}
+
+message ListMCPServersResponse {
+  repeated MCPServer servers = 1;
+}
+
+message GetMCPServerRequest {
+  int64 id = 1;
+}
+
+message CreateMCPServerRequest {
+  string name = 1;
+  bool enabled = 2;
+  string transport = 3;
+  string command = 4;
+  repeated string args = 5;
+  map<string, string> env = 6;
+  string url = 7;
+  map<string, string> headers = 8;
+  int32 timeout_seconds = 9;
+}
+
+message UpdateMCPServerRequest {
+  int64 id = 1;
+  string name = 2;
+  bool enabled = 3;
+  string transport = 4;
+  string command = 5;
+  repeated string args = 6;
+  map<string, string> env = 7;
+  string url = 8;
+  map<string, string> headers = 9;
+  int32 timeout_seconds = 10;
+}
+
+message DeleteMCPServerRequest {
+  int64 id = 1;
 }

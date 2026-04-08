@@ -4,16 +4,11 @@ import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 enum ChatServerConnectionStatus {
   connected,
   connecting,
-  syncing,
   disconnected,
 }
 
 ChatServerConnectionStatus resolveChatServerConnectionStatus(ChatState state) {
   if (state.isConnected) {
-    if (state.isLoading && !state.isStreamingInCurrentSession) {
-      return ChatServerConnectionStatus.syncing;
-    }
-
     return ChatServerConnectionStatus.connected;
   }
 
@@ -65,13 +60,6 @@ class ChatConnectionStatusBar extends StatelessWidget {
         text = 'Подключение к серверу...';
         showSpinner = true;
         break;
-      case ChatServerConnectionStatus.syncing:
-        backgroundColor = colors.primaryContainer;
-        foregroundColor = colors.onPrimaryContainer;
-        icon = Icons.sync;
-        text = 'Синхронизация...';
-        showSpinner = true;
-        break;
       case ChatServerConnectionStatus.disconnected:
         backgroundColor = colors.errorContainer;
         foregroundColor = colors.onErrorContainer;
@@ -111,8 +99,7 @@ class ChatConnectionStatusBar extends StatelessWidget {
                 ),
               ),
             ],
-            if (status == ChatServerConnectionStatus.disconnected &&
-                onRetry != null) ...[
+            if (status == ChatServerConnectionStatus.disconnected && onRetry != null) ...[
               const SizedBox(width: 8),
               TextButton(
                 onPressed: onRetry,

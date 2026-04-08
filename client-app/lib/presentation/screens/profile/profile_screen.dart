@@ -11,6 +11,7 @@ import 'package:gen/presentation/screens/auth/bloc/auth_bloc.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_event.dart';
 import 'package:gen/presentation/screens/auth/bloc/auth_state.dart';
 import 'package:gen/presentation/screens/auth/login_form_decoration.dart';
+import 'package:gen/presentation/screens/profile/user_mcp_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -207,6 +208,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: SelectableText(
                     _serverLabel(config),
                     style: textTheme.bodyLarge,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _settingsSection(
+                  context,
+                  title: 'MCP-серверы',
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.extension_outlined),
+                    title: const Text('Мои MCP-серверы'),
+                    subtitle: const Text('Подключить свои MCP сервера для инструментов'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const UserMcpScreen(),
+                        ),
+                      );
+                    },
                   ),
                 ),
                 const SizedBox(height: 12),

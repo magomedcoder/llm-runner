@@ -25,4 +25,9 @@ jwt:
 
 data_dir: "./data"
 
+# mcp:
+#   http_allow_any: false
+#   http_allow_hosts:
+#     - "0.0.0.0"
+
 # attachment_hydrate_parallelism: 16 # Параллельная подготовка вложений в истории для LLM (1...64). 0 = 8

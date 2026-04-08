@@ -109,6 +109,8 @@ abstract class IChatRemoteDataSource {
     required bool modelReasoningEnabled,
     required bool webSearchEnabled,
     required String webSearchProvider,
+    required bool mcpEnabled,
+    required List<int> mcpServerIds,
   });
   Future<String?> getSelectedRunner();
   Future<void> setSelectedRunner(String? runner);
@@ -1151,6 +1153,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
           : false,
       webSearchEnabled: response.webSearchEnabled,
       webSearchProvider: response.webSearchProvider,
+      mcpEnabled: response.mcpEnabled,
+      mcpServerIds: response.mcpServerIds.map((e) => e.toInt()).toList(),
     );
   }
 
@@ -1170,6 +1174,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
     required bool modelReasoningEnabled,
     required bool webSearchEnabled,
     required String webSearchProvider,
+    required bool mcpEnabled,
+    required List<int> mcpServerIds,
   }) async {
     final request = grpc.UpdateSessionSettingsRequest(
       sessionId: Int64(sessionId),
@@ -1183,7 +1189,9 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
       modelReasoningEnabled: modelReasoningEnabled,
       webSearchEnabled: webSearchEnabled,
       webSearchProvider: webSearchProvider,
+      mcpEnabled: mcpEnabled,
     );
+    request.mcpServerIds.addAll(mcpServerIds.map(Int64.new));
     if (temperature != null) {
       request.temperature = temperature;
     }
@@ -1213,6 +1221,8 @@ class ChatRemoteDataSource implements IChatRemoteDataSource {
           : false,
       webSearchEnabled: response.webSearchEnabled,
       webSearchProvider: response.webSearchProvider,
+      mcpEnabled: response.mcpEnabled,
+      mcpServerIds: response.mcpServerIds.map((e) => e.toInt()).toList(),
     );
   }
 

@@ -21,6 +21,8 @@ class UpdateSessionSettingsUseCase {
     required bool modelReasoningEnabled,
     required bool webSearchEnabled,
     required String webSearchProvider,
+    required bool mcpEnabled,
+    required List<int> mcpServerIds,
   }) {
     return repository.updateSessionSettings(
       sessionId: sessionId,
@@ -37,6 +39,8 @@ class UpdateSessionSettingsUseCase {
       modelReasoningEnabled: modelReasoningEnabled,
       webSearchEnabled: webSearchEnabled,
       webSearchProvider: webSearchProvider,
+      mcpEnabled: mcpEnabled,
+      mcpServerIds: mcpServerIds,
     );
   }
 }

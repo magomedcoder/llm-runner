@@ -38,6 +38,26 @@ CREATE TABLE IF NOT EXISTS runners
 
 CREATE INDEX IF NOT EXISTS idx_runners_enabled ON runners (enabled);
 
+CREATE TABLE IF NOT EXISTS mcp_servers
+(
+    id              BIGSERIAL PRIMARY KEY,
+    user_id         INTEGER      NULL REFERENCES users (id) ON DELETE CASCADE,
+    name            VARCHAR(255) NOT NULL DEFAULT '',
+    enabled         BOOLEAN      NOT NULL DEFAULT TRUE,
+    transport       VARCHAR(32)  NOT NULL DEFAULT 'stdio',
+    command         TEXT         NOT NULL DEFAULT '',
+    args_json       TEXT         NOT NULL DEFAULT '[]',
+    env_json        TEXT         NOT NULL DEFAULT '{}',
+    url             TEXT         NOT NULL DEFAULT '',
+    headers_json    TEXT         NOT NULL DEFAULT '{}',
+    timeout_seconds INTEGER      NOT NULL DEFAULT 120,
+    created_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at      TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_enabled ON mcp_servers (enabled);
+CREATE INDEX IF NOT EXISTS idx_mcp_servers_user_id ON mcp_servers (user_id);
+
 CREATE TABLE IF NOT EXISTS chats
 (
     id                      BIGSERIAL PRIMARY KEY,
@@ -53,6 +73,7 @@ CREATE TABLE IF NOT EXISTS chats
     json_mode               BOOLEAN      NOT NULL DEFAULT FALSE,
     json_schema             TEXT         NOT NULL DEFAULT '',
     tools_json              TEXT         NOT NULL DEFAULT '',
+    mcp_settings            JSONB        NOT NULL DEFAULT '{"enabled":false,"server_ids":[]}'::jsonb,
     profile                 VARCHAR(64)  NOT NULL DEFAULT '',
     model_reasoning_enabled BOOLEAN      NOT NULL DEFAULT FALSE,
     web_search_enabled      BOOLEAN      NOT NULL DEFAULT FALSE,
@@ -145,6 +166,7 @@ CREATE INDEX IF NOT EXISTS idx_chats_user_id ON chats (user_id);
 CREATE INDEX IF NOT EXISTS idx_chats_selected_runner_id ON chats (selected_runner_id);
 CREATE INDEX IF NOT EXISTS idx_chats_created_at ON chats (created_at);
 CREATE INDEX IF NOT EXISTS idx_chats_deleted_at ON chats (deleted_at);
+CREATE INDEX IF NOT EXISTS idx_chats_mcp_enabled ON chats (id) WHERE mcp_settings @> '{"enabled": true}'::jsonb;
 CREATE INDEX IF NOT EXISTS idx_files_created_at ON files (created_at);
 CREATE INDEX IF NOT EXISTS idx_files_expires_at ON files (expires_at) WHERE expires_at IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_files_chat_session_kind ON files (chat_session_id, kind) WHERE chat_session_id IS NOT NULL;

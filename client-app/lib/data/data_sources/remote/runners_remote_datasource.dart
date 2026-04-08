@@ -5,6 +5,7 @@ import 'package:gen/core/log/logs.dart';
 import 'package:gen/domain/entities/gpu_info.dart' as gpu_ent;
 import 'package:gen/domain/entities/loaded_model_status.dart' as lm_ent;
 import 'package:gen/domain/entities/runner_info.dart' as domain;
+import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/entities/server_info.dart' as srv_ent;
 import 'package:gen/generated/grpc_pb/common.pb.dart' as common;
@@ -47,6 +48,22 @@ abstract class IRunnersRemoteDataSource {
   Future<WebSearchSettingsEntity> getWebSearchSettings();
 
   Future<void> updateWebSearchSettings(WebSearchSettingsEntity settings);
+
+  Future<List<McpServerEntity>> listMcpServers();
+
+  Future<McpServerEntity> createMcpServer(McpServerEntity server);
+
+  Future<McpServerEntity> updateMcpServer(McpServerEntity server);
+
+  Future<void> deleteMcpServer(int id);
+
+  Future<List<McpServerEntity>> listUserMcpServers();
+
+  Future<McpServerEntity> createUserMcpServer(McpServerEntity server);
+
+  Future<McpServerEntity> updateUserMcpServer(McpServerEntity server);
+
+  Future<void> deleteUserMcpServer(int id);
 }
 
 class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
@@ -333,6 +350,149 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       );
     } catch (e) {
       Logs().e('RunnersRemote: updateWebSearchSettings', exception: e);
+      rethrow;
+    }
+  }
+
+  McpServerEntity _mapMcp(pb.MCPServer s) {
+    return McpServerEntity(
+      id: s.id.toInt(),
+      name: s.name,
+      enabled: s.enabled,
+      transport: s.transport,
+      command: s.command,
+      args: List<String>.from(s.args),
+      env: Map<String, String>.from(s.env),
+      url: s.url,
+      headers: Map<String, String>.from(s.headers),
+      timeoutSeconds: s.timeoutSeconds,
+      ownerUserId: s.ownerUserId.toInt(),
+    );
+  }
+
+  void _fillMcpCreate(pb.CreateMCPServerRequest r, McpServerEntity e) {
+    r.name = e.name;
+    r.enabled = e.enabled;
+    r.transport = e.transport;
+    r.command = e.command;
+    r.args.addAll(e.args);
+    r.env.addAll(e.env);
+    r.url = e.url;
+    r.headers.addAll(e.headers);
+    r.timeoutSeconds = e.timeoutSeconds;
+  }
+
+  void _fillMcpUpdate(pb.UpdateMCPServerRequest r, McpServerEntity e) {
+    r.id = Int64(e.id);
+    r.name = e.name;
+    r.enabled = e.enabled;
+    r.transport = e.transport;
+    r.command = e.command;
+    r.args.addAll(e.args);
+    r.env.addAll(e.env);
+    r.url = e.url;
+    r.headers.addAll(e.headers);
+    r.timeoutSeconds = e.timeoutSeconds;
+  }
+
+  @override
+  Future<List<McpServerEntity>> listMcpServers() async {
+    Logs().d('RunnersRemote: listMcpServers');
+    try {
+      final resp = await _authGuard.execute(() => _channelManager.runnerClient.listMCPServers(common.Empty()));
+      return resp.servers.map(_mapMcp).toList();
+    } catch (e) {
+      Logs().e('RunnersRemote: listMcpServers', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<McpServerEntity> createMcpServer(McpServerEntity server) async {
+    Logs().d('RunnersRemote: createMcpServer');
+    try {
+      final req = pb.CreateMCPServerRequest();
+      _fillMcpCreate(req, server);
+      final created = await _authGuard.execute(() => _channelManager.runnerClient.createMCPServer(req));
+      return _mapMcp(created);
+    } catch (e) {
+      Logs().e('RunnersRemote: createMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<McpServerEntity> updateMcpServer(McpServerEntity server) async {
+    Logs().d('RunnersRemote: updateMcpServer id=${server.id}');
+    try {
+      final req = pb.UpdateMCPServerRequest();
+      _fillMcpUpdate(req, server);
+      final updated = await _authGuard.execute(() => _channelManager.runnerClient.updateMCPServer(req));
+      return _mapMcp(updated);
+    } catch (e) {
+      Logs().e('RunnersRemote: updateMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> deleteMcpServer(int id) async {
+    Logs().d('RunnersRemote: deleteMcpServer id=$id');
+    try {
+      await _authGuard.execute(() => _channelManager.runnerClient.deleteMCPServer(pb.DeleteMCPServerRequest(id: Int64(id))));
+    } catch (e) {
+      Logs().e('RunnersRemote: deleteMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<List<McpServerEntity>> listUserMcpServers() async {
+    Logs().d('RunnersRemote: listUserMcpServers');
+    try {
+      final resp = await _authGuard.execute(() => _channelManager.runnerClient.listUserMCPServers(common.Empty()));
+      return resp.servers.map(_mapMcp).toList();
+    } catch (e) {
+      Logs().e('RunnersRemote: listUserMcpServers', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<McpServerEntity> createUserMcpServer(McpServerEntity server) async {
+    Logs().d('RunnersRemote: createUserMcpServer');
+    try {
+      final req = pb.CreateMCPServerRequest();
+      _fillMcpCreate(req, server);
+      final created = await _authGuard.execute(() => _channelManager.runnerClient.createUserMCPServer(req));
+      return _mapMcp(created);
+    } catch (e) {
+      Logs().e('RunnersRemote: createUserMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<McpServerEntity> updateUserMcpServer(McpServerEntity server) async {
+    Logs().d('RunnersRemote: updateUserMcpServer id=${server.id}');
+    try {
+      final req = pb.UpdateMCPServerRequest();
+      _fillMcpUpdate(req, server);
+      final updated = await _authGuard.execute(() => _channelManager.runnerClient.updateUserMCPServer(req));
+      return _mapMcp(updated);
+    } catch (e) {
+      Logs().e('RunnersRemote: updateUserMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<void> deleteUserMcpServer(int id) async {
+    Logs().d('RunnersRemote: deleteUserMcpServer id=$id');
+    try {
+      await _authGuard.execute(() => _channelManager.runnerClient.deleteUserMCPServer(pb.DeleteMCPServerRequest(id: Int64(id))));
+    } catch (e) {
+      Logs().e('RunnersRemote: deleteUserMcpServer', exception: e);
       rethrow;
     }
   }

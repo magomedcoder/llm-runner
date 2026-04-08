@@ -39,6 +39,12 @@ func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *do
 	if seq == nil {
 		seq = pq.StringArray{}
 	}
+
+	mcpJSON, err := domain.MarshalMCPSessionSettings(settings.MCPEnabled, settings.MCPServerIDs)
+	if err != nil {
+		return err
+	}
+
 	return r.db.WithContext(ctx).Model(&model.Chat{}).
 		Where("id = ?", settings.SessionID).
 		Updates(map[string]any{
@@ -55,6 +61,7 @@ func (r *chatSessionSettingsRepository) Upsert(ctx context.Context, settings *do
 			"model_reasoning_enabled": settings.ModelReasoningEnabled,
 			"web_search_enabled":      settings.WebSearchEnabled,
 			"web_search_provider":     settings.WebSearchProvider,
+			"mcp_settings":            mcpJSON,
 			"updated_at":              gorm.Expr("NOW()"),
 		}).Error
 }
@@ -64,6 +71,12 @@ func chatRowToSessionSettings(m *model.Chat) *domain.ChatSessionSettings {
 	if m.StopSequences != nil {
 		seq = []string(m.StopSequences)
 	}
+
+	mcpEnabled, mcpIDs, err := domain.UnmarshalMCPSessionSettings(m.MCPSettings)
+	if err != nil {
+		mcpEnabled, mcpIDs = false, []int64{}
+	}
+
 	return &domain.ChatSessionSettings{
 		SessionID:             m.ID,
 		SystemPrompt:          m.SystemPrompt,
@@ -79,5 +92,7 @@ func chatRowToSessionSettings(m *model.Chat) *domain.ChatSessionSettings {
 		ModelReasoningEnabled: m.ModelReasoningEnabled,
 		WebSearchEnabled:      m.WebSearchEnabled,
 		WebSearchProvider:     m.WebSearchProvider,
+		MCPEnabled:            mcpEnabled,
+		MCPServerIDs:          mcpIDs,
 	}
 }

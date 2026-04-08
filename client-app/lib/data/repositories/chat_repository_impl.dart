@@ -296,6 +296,8 @@ class ChatRepositoryImpl implements ChatRepository {
     required bool modelReasoningEnabled,
     required bool webSearchEnabled,
     required String webSearchProvider,
+    required bool mcpEnabled,
+    required List<int> mcpServerIds,
   }) async {
     try {
       return await dataSource.updateSessionSettings(
@@ -313,6 +315,8 @@ class ChatRepositoryImpl implements ChatRepository {
         modelReasoningEnabled: modelReasoningEnabled,
         webSearchEnabled: webSearchEnabled,
         webSearchProvider: webSearchProvider,
+        mcpEnabled: mcpEnabled,
+        mcpServerIds: mcpServerIds,
       );
     } catch (e, st) {
       if (e is Failure) rethrow;

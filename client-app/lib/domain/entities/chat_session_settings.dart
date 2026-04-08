@@ -15,6 +15,8 @@ class ChatSessionSettings extends Equatable {
   final bool modelReasoningEnabled;
   final bool webSearchEnabled;
   final String webSearchProvider;
+  final bool mcpEnabled;
+  final List<int> mcpServerIds;
 
   const ChatSessionSettings({
     required this.sessionId,
@@ -31,6 +33,8 @@ class ChatSessionSettings extends Equatable {
     this.modelReasoningEnabled = false,
     this.webSearchEnabled = false,
     this.webSearchProvider = '',
+    this.mcpEnabled = false,
+    this.mcpServerIds = const [],
   });
 
   @override
@@ -49,5 +53,7 @@ class ChatSessionSettings extends Equatable {
     modelReasoningEnabled,
     webSearchEnabled,
     webSearchProvider,
+    mcpEnabled,
+    mcpServerIds,
   ];
 }

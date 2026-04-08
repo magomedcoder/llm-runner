@@ -200,6 +200,8 @@ class ChatUpdateSessionSettings extends ChatEvent {
   final bool modelReasoningEnabled;
   final bool webSearchEnabled;
   final String webSearchProvider;
+  final bool mcpEnabled;
+  final List<int> mcpServerIds;
 
   const ChatUpdateSessionSettings({
     required this.systemPrompt,
@@ -215,6 +217,8 @@ class ChatUpdateSessionSettings extends ChatEvent {
     this.modelReasoningEnabled = false,
     this.webSearchEnabled = false,
     this.webSearchProvider = '',
+    this.mcpEnabled = false,
+    this.mcpServerIds = const [],
   });
 
   @override
@@ -232,6 +236,8 @@ class ChatUpdateSessionSettings extends ChatEvent {
     modelReasoningEnabled,
     webSearchEnabled,
     webSearchProvider,
+    mcpEnabled,
+    mcpServerIds,
   ];
 }
 
@@ -252,4 +258,14 @@ class ChatSetWebSearch extends ChatEvent {
 
   @override
   List<Object?> get props => [enabled, provider];
+}
+
+class ChatSetMcpDraft extends ChatEvent {
+  final bool enabled;
+  final List<int> serverIds;
+
+  const ChatSetMcpDraft({required this.enabled, this.serverIds = const []});
+
+  @override
+  List<Object?> get props => [enabled, serverIds];
 }

@@ -15,4 +15,6 @@ type ChatSessionSettings struct {
 	ModelReasoningEnabled bool
 	WebSearchEnabled      bool
 	WebSearchProvider     string
+	MCPEnabled            bool
+	MCPServerIDs          []int64
 }

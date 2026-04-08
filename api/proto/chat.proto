@@ -235,6 +235,8 @@ message UpdateSessionSettingsRequest {
   bool model_reasoning_enabled = 12;
   bool web_search_enabled = 13;
   string web_search_provider = 14;
+  bool mcp_enabled = 15;
+  repeated int64 mcp_server_ids = 16;
 }
 
 message SessionSettings {
@@ -252,6 +254,8 @@ message SessionSettings {
   bool model_reasoning_enabled = 12;
   bool web_search_enabled = 13;
   string web_search_provider = 14;
+  bool mcp_enabled = 15;
+  repeated int64 mcp_server_ids = 16;
 }
 
 message SelectedRunnerResponse {
