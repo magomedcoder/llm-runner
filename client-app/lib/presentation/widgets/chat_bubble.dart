@@ -24,6 +24,65 @@ Color _messageBodyTextColor(ColorScheme cs) {
   return cs.onSurface.withValues(alpha: 0.94);
 }
 
+MarkdownStyleSheet assistantBubbleMarkdownSheet(ThemeData theme) {
+  final cs = theme.colorScheme;
+  final onVar = _messageBodyTextColor(cs);
+  final base = MarkdownStyleSheet.fromTheme(theme);
+  return base.copyWith(
+    p: base.p?.copyWith(color: onVar, fontSize: 15, height: 1.5),
+    h1: base.h1?.copyWith(color: onVar, height: 1.25),
+    h2: base.h2?.copyWith(color: onVar, height: 1.3),
+    h3: base.h3?.copyWith(color: onVar, height: 1.35),
+    h4: base.h4?.copyWith(color: onVar),
+    h5: base.h5?.copyWith(color: onVar),
+    h6: base.h6?.copyWith(color: onVar),
+    em: base.em?.copyWith(color: onVar, fontStyle: FontStyle.italic),
+    strong: base.strong?.copyWith(color: onVar, fontWeight: FontWeight.w600),
+    a: base.a?.copyWith(color: onVar, decoration: TextDecoration.underline),
+    code: base.code?.copyWith(
+      color: onVar,
+      fontFamily: 'monospace',
+      fontSize: 13,
+      backgroundColor: Colors.transparent,
+    ),
+    listIndent: 24,
+    listBullet: base.listBullet?.copyWith(color: onVar),
+    blockSpacing: 10,
+    blockquote: base.blockquote?.copyWith(
+      color: onVar.withValues(alpha: 0.92),
+      height: 1.45,
+    ),
+    blockquoteDecoration: BoxDecoration(
+      border: Border(
+        left: BorderSide(
+            color: onVar.withValues(alpha: 0.45),
+            width: 4,
+        ),
+      ),
+    ),
+    blockquotePadding: const EdgeInsets.only(
+        left: 12,
+        top: 2,
+        bottom: 2,
+    ),
+    codeblockPadding: const EdgeInsets.all(10),
+    codeblockDecoration: BoxDecoration(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(8),
+    ),
+    horizontalRuleDecoration: BoxDecoration(
+      border: Border(top: BorderSide(color: cs.outlineVariant, width: 1)),
+    ),
+    tableBorder: TableBorder.all(color: cs.outlineVariant, width: 1),
+    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+    tableHead: base.tableHead?.copyWith(
+      color: onVar,
+      fontWeight: FontWeight.w600,
+    ),
+    tableBody: base.tableBody?.copyWith(color: onVar),
+  );
+}
+
 BorderRadius _bubbleRadius(bool isUser) {
   const r = 20.0;
   const tail = 8.0;
@@ -138,58 +197,6 @@ class _ChatBubbleState extends State<ChatBubble> {
         setState(() => _downloadingFileId = null);
       }
     }
-  }
-
-  MarkdownStyleSheet _assistantMarkdownSheet(ThemeData theme) {
-    final cs = theme.colorScheme;
-    final onVar = _messageBodyTextColor(cs);
-    final base = MarkdownStyleSheet.fromTheme(theme);
-    return base.copyWith(
-      p: base.p?.copyWith(color: onVar, fontSize: 15, height: 1.5),
-      h1: base.h1?.copyWith(color: onVar, height: 1.25),
-      h2: base.h2?.copyWith(color: onVar, height: 1.3),
-      h3: base.h3?.copyWith(color: onVar, height: 1.35),
-      h4: base.h4?.copyWith(color: onVar),
-      h5: base.h5?.copyWith(color: onVar),
-      h6: base.h6?.copyWith(color: onVar),
-      em: base.em?.copyWith(color: onVar, fontStyle: FontStyle.italic),
-      strong: base.strong?.copyWith(color: onVar, fontWeight: FontWeight.w600),
-      a: base.a?.copyWith(color: onVar, decoration: TextDecoration.underline),
-      code: base.code?.copyWith(
-        color: onVar,
-        fontFamily: 'monospace',
-        fontSize: 13,
-        backgroundColor: Colors.transparent,
-      ),
-      listIndent: 24,
-      listBullet: base.listBullet?.copyWith(color: onVar),
-      blockSpacing: 10,
-      blockquote: base.blockquote?.copyWith(
-        color: onVar.withValues(alpha: 0.92),
-        height: 1.45,
-      ),
-      blockquoteDecoration: BoxDecoration(
-        border: Border(
-          left: BorderSide(color: onVar.withValues(alpha: 0.45), width: 4),
-        ),
-      ),
-      blockquotePadding: const EdgeInsets.only(left: 12, top: 2, bottom: 2),
-      codeblockPadding: const EdgeInsets.all(10),
-      codeblockDecoration: BoxDecoration(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      horizontalRuleDecoration: BoxDecoration(
-        border: Border(top: BorderSide(color: cs.outlineVariant, width: 1)),
-      ),
-      tableBorder: TableBorder.all(color: cs.outlineVariant, width: 1),
-      tableCellsPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-      tableHead: base.tableHead?.copyWith(
-        color: onVar,
-        fontWeight: FontWeight.w600,
-      ),
-      tableBody: base.tableBody?.copyWith(color: onVar),
-    );
   }
 
   @override
@@ -344,19 +351,10 @@ class _ChatBubbleState extends State<ChatBubble> {
                           height: 1.5,
                         ),
                       )
-                      : MarkdownBody(
-                        data: message.content,
-                        selectable: true,
-                        styleSheet: _assistantMarkdownSheet(theme),
-                        builders: {
-                          'pre': CodeBlockBuilder(
-                            textStyle: TextStyle(
-                              fontSize: 13,
-                              fontFamily: 'monospace',
-                              color: messageTextColor,
-                            ),
-                          ),
-                        },
+                      : _assistantMessageBody(
+                        theme,
+                        messageTextColor,
+                        message.content,
                       ),
                   if (isStreaming && (widget.streamingStatus?.trim().isNotEmpty ?? false))
                     Padding(
@@ -586,6 +584,141 @@ class _ChatBubbleState extends State<ChatBubble> {
       ),
     );
   }
+}
+
+final _mcpToolImageBlock = RegExp(
+  r'\[Изображение mime="([^"]+)" base64\]\s*\n([A-Za-z0-9+/=]+)',
+  multiLine: true,
+);
+
+final _markdownDataImage = RegExp(r'!\[([^\]]*)\]\(data:image/([\w.+-]+);base64,([A-Za-z0-9+/=]+)\)');
+
+abstract class _AssistantBodySeg {}
+
+class _AssistantTextSeg implements _AssistantBodySeg {
+  _AssistantTextSeg(this.text);
+  final String text;
+}
+
+class _AssistantImageSeg implements _AssistantBodySeg {
+  _AssistantImageSeg(this.bytes);
+  final Uint8List bytes;
+}
+
+Uint8List? _decodeLooseBase64(String raw) {
+  try {
+    final clean = raw.replaceAll(RegExp(r'\s+'), '');
+    if (clean.isEmpty) {
+      return null;
+    }
+    return Uint8List.fromList(base64Decode(clean));
+  } catch (_) {
+    return null;
+  }
+}
+
+List<_AssistantBodySeg> _parseAssistantBodySegments(String input) {
+  final out = <_AssistantBodySeg>[];
+  var rest = input;
+  while (rest.isNotEmpty) {
+    final mTool = _mcpToolImageBlock.firstMatch(rest);
+    final mMd = _markdownDataImage.firstMatch(rest);
+    final iTool = mTool?.start ?? rest.length + 1;
+    final iMd = mMd?.start ?? rest.length + 1;
+    if (mTool == null && mMd == null) {
+      out.add(_AssistantTextSeg(rest));
+      break;
+    }
+
+    final useTool = mTool != null && iTool <= iMd;
+    final m = useTool ? mTool : mMd!;
+    if (m.start > 0) {
+      out.add(_AssistantTextSeg(rest.substring(0, m.start)));
+    }
+
+    if (useTool) {
+      final b64 = m.group(2)!;
+      final bytes = _decodeLooseBase64(b64);
+      if (bytes != null && bytes.isNotEmpty) {
+        out.add(_AssistantImageSeg(bytes));
+      } else {
+        out.add(_AssistantTextSeg(m.group(0)!));
+      }
+    } else {
+      final b64 = m.group(3)!;
+      final bytes = _decodeLooseBase64(b64);
+      if (bytes != null && bytes.isNotEmpty) {
+        out.add(_AssistantImageSeg(bytes));
+      } else {
+        out.add(_AssistantTextSeg(m.group(0)!));
+      }
+    }
+    rest = rest.substring(m.end);
+  }
+
+  return out;
+}
+
+Widget _assistantMessageBody(ThemeData theme, Color messageTextColor, String content) {
+  final sheet = assistantBubbleMarkdownSheet(theme);
+  final preBuilder = CodeBlockBuilder(
+    textStyle: TextStyle(
+      fontSize: 13,
+      fontFamily: 'monospace',
+      color: messageTextColor,
+    ),
+  );
+  final builders = <String, MarkdownElementBuilder>{
+    'pre': preBuilder
+  };
+
+  final segs = _parseAssistantBodySegments(content);
+  if (segs.length == 1 && segs.first is _AssistantTextSeg) {
+    return MarkdownBody(
+      data: (segs.first as _AssistantTextSeg).text,
+      selectable: true,
+      styleSheet: sheet,
+      builders: builders,
+    );
+  }
+
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      for (final s in segs)
+        if (s is _AssistantTextSeg && s.text.trim().isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: MarkdownBody(
+              data: s.text,
+              selectable: true,
+              styleSheet: sheet,
+              builders: builders,
+            ),
+          )
+        else if (s is _AssistantImageSeg)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 360),
+                child: Image.memory(
+                  s.bytes,
+                  fit: BoxFit.contain,
+                  errorBuilder: (context, error, stackTrace) => Text(
+                    'Не удалось показать изображение',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: messageTextColor.withValues(alpha: 0.8),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+    ],
+  );
 }
 
 class _ToolProgressLine extends StatelessWidget {

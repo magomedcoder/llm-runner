@@ -72,6 +72,41 @@ type cohereActionRow struct {
 	Parameters json.RawMessage `json:"parameters"`
 }
 
+type toolLoopEnvKey struct{}
+
+type toolLoopEnv struct {
+	RunnerAddr     string
+	ResolvedModel  string
+	StopSequences  []string
+	TimeoutSeconds int32
+	SamplingGen    *domain.GenerationParams
+}
+
+func withToolLoopEnv(ctx context.Context, env *toolLoopEnv) context.Context {
+	if env == nil {
+		return ctx
+	}
+
+	return context.WithValue(ctx, toolLoopEnvKey{}, env)
+}
+
+func toolLoopEnvFrom(ctx context.Context) *toolLoopEnv {
+	v, _ := ctx.Value(toolLoopEnvKey{}).(*toolLoopEnv)
+	return v
+}
+
+func samplingGenParamsForMCP(gp *domain.GenerationParams) *domain.GenerationParams {
+	if gp == nil {
+		return &domain.GenerationParams{}
+	}
+
+	out := *gp
+	out.Tools = nil
+	out.ResponseFormat = nil
+
+	return &out
+}
+
 func cloneGenParamsForToolCalls(in *domain.GenerationParams) *domain.GenerationParams {
 	if in == nil {
 		return nil
@@ -138,8 +173,9 @@ func streamToolRoundComplete(send func(ChatStreamChunk) bool, messageID int64, s
 
 	if canonical == modelFullTrimmed {
 		_ = send(ChatStreamChunk{
-			Kind: StreamChunkKindText,
-			Text: "", MessageID: messageID,
+			Kind:      StreamChunkKindText,
+			Text:      "",
+			MessageID: messageID,
 		})
 		return
 	}
@@ -593,6 +629,13 @@ func (c *ChatUseCase) runChatToolLoop(
 			}
 
 			toolCtx, cancelTool := context.WithTimeout(ctx, toolExecutionDuration(timeoutSeconds))
+			toolCtx = withToolLoopEnv(toolCtx, &toolLoopEnv{
+				RunnerAddr:     runnerAddr,
+				ResolvedModel:  resolvedModel,
+				StopSequences:  stopSequences,
+				TimeoutSeconds: timeoutSeconds,
+				SamplingGen:    samplingGenParamsForMCP(gp),
+			})
 			res, err := c.executeDeclaredTool(toolCtx, userID, sessionID, name, row.Parameters)
 			cancelTool()
 			if err != nil {
@@ -646,6 +689,16 @@ func (c *ChatUseCase) runChatToolLoop(
 
 func (c *ChatUseCase) toolProgressDisplayName(ctx context.Context, sessionID int64, normalizedName string, rawToolName string) string {
 	n := normalizeToolName(normalizedName)
+	switch n {
+	case "gen_mcp_list_resources":
+		return "MCP: ресурсы (список)"
+	case "gen_mcp_read_resource":
+		return "MCP: ресурс (чтение)"
+	case "gen_mcp_list_prompts":
+		return "MCP: промпты (список)"
+	case "gen_mcp_get_prompt":
+		return "MCP: промпт"
+	}
 	if sid, orig, ok := mcpclient.ParseToolAlias(n); ok {
 		label := fmt.Sprintf("MCP #%d", sid)
 		if c.mcpServerRepo != nil {
@@ -697,6 +750,14 @@ func (c *ChatUseCase) executeDeclaredTool(ctx context.Context, userID int, sessi
 		return c.toolPutSessionFile(ctx, userID, sessionID, params)
 	case "web_search":
 		return c.toolWebSearch(ctx, userID, sessionID, params)
+	case "gen_mcp_list_resources":
+		return c.toolGenMcpListResources(ctx, sessionID, params)
+	case "gen_mcp_read_resource":
+		return c.toolGenMcpReadResource(ctx, sessionID, params)
+	case "gen_mcp_list_prompts":
+		return c.toolGenMcpListPrompts(ctx, sessionID, params)
+	case "gen_mcp_get_prompt":
+		return c.toolGenMcpGetPrompt(ctx, sessionID, params)
 	default:
 		if sid, orig, ok := mcpclient.ParseToolAlias(nameNorm); ok {
 			return c.toolMCP(ctx, sessionID, sid, orig, params)

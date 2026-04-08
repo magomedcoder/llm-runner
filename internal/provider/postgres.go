@@ -14,12 +14,7 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func NewDB(ctx context.Context, database *config.DatabaseConfig, appLogLevel string) (*gorm.DB, error) {
-	dsn, err := database.PostgresDSN()
-	if err != nil {
-		return nil, err
-	}
-
+func NewDB(ctx context.Context, conf *config.Config, appLogLevel string) (*gorm.DB, error) {
 	gormLogLevel := logger.Warn
 	switch strings.ToLower(strings.TrimSpace(appLogLevel)) {
 	case "debug":
@@ -38,13 +33,24 @@ func NewDB(ctx context.Context, database *config.DatabaseConfig, appLogLevel str
 		},
 	)
 
-	gdb, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+	gormConfig := &gorm.Config{
 		PrepareStmt: true,
 		Logger:      sqlLogger,
 		NowFunc: func() time.Time {
 			return time.Now().UTC()
 		},
-	})
+	}
+
+	gdb, err := gorm.Open(postgres.New(postgres.Config{
+		DSN: fmt.Sprintf(
+			"host=%s port=%s user=%s password=%s dbname=%s sslmode=disable TimeZone=Europe/Moscow",
+			conf.Database.Host,
+			conf.Database.Port,
+			conf.Database.Username,
+			conf.Database.Password,
+			conf.Database.Database,
+		),
+	}), gormConfig)
 	if err != nil {
 		return nil, fmt.Errorf("ошибка подключения к базе данных: %w", err)
 	}
@@ -54,38 +60,9 @@ func NewDB(ctx context.Context, database *config.DatabaseConfig, appLogLevel str
 		return nil, fmt.Errorf("получение sql.DB: %w", err)
 	}
 
-	maxOpen := database.MaxOpenConns
-	if maxOpen <= 0 {
-		maxOpen = 25
-	}
-
-	maxIdle := database.MaxIdleConns
-	if maxIdle <= 0 {
-		maxIdle = max(maxOpen/4, 2)
-
-		if maxIdle > maxOpen {
-			maxIdle = maxOpen
-		}
-	}
-
-	life := 30 * time.Minute
-	if s := strings.TrimSpace(database.ConnMaxLifetime); s != "" {
-		if d, err := time.ParseDuration(s); err == nil && d > 0 {
-			life = d
-		}
-	}
-
-	idle := 5 * time.Minute
-	if s := strings.TrimSpace(database.ConnMaxIdleTime); s != "" {
-		if d, err := time.ParseDuration(s); err == nil && d > 0 {
-			idle = d
-		}
-	}
-
-	sqlDB.SetMaxOpenConns(maxOpen)
-	sqlDB.SetMaxIdleConns(maxIdle)
-	sqlDB.SetConnMaxLifetime(life)
-	sqlDB.SetConnMaxIdleTime(idle)
+	sqlDB.SetMaxIdleConns(10)
+	sqlDB.SetMaxOpenConns(100)
+	sqlDB.SetConnMaxLifetime(time.Minute)
 
 	if err := sqlDB.PingContext(ctx); err != nil {
 		_ = sqlDB.Close()

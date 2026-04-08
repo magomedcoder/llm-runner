@@ -7,15 +7,9 @@ log_level: "info"
 database:
   host: "postgres"
   port: 5432
-  user: "postgres"
+  username: "postgres"
   password: "postgres"
-  name: "gen_db"
-  ssl_mode: "disable"
-  # max_open_conns: 50
-  # max_idle_conns: 12
-  # conn_max_lifetime: "30m"
-  # conn_max_idle_time: "5m"
-  # connect_timeout_sec: 15
+  database: "gen_db"
 
 jwt:
   access_secret: "gen"

@@ -2,15 +2,69 @@ package bootstrap
 
 import (
 	"context"
-	"database/sql"
 	"embed"
-	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"time"
+
+	"gorm.io/gorm"
 )
 
-func RunMigrations(ctx context.Context, db *sql.DB, fs embed.FS) error {
+func splitMigrationStatements(sql string) []string {
+	sql = strings.TrimSpace(sql)
+	if sql == "" {
+		return nil
+	}
+	var out []string
+	var b strings.Builder
+	inSingleQuote := false
+	for i := 0; i < len(sql); i++ {
+		c := sql[i]
+		if inSingleQuote {
+			b.WriteByte(c)
+			if c == '\'' {
+				if i+1 < len(sql) && sql[i+1] == '\'' {
+					b.WriteByte(sql[i+1])
+					i++
+					continue
+				}
+				inSingleQuote = false
+			}
+			continue
+		}
+		if c == '\'' {
+			inSingleQuote = true
+			b.WriteByte(c)
+			continue
+		}
+		if c == ';' {
+			s := strings.TrimSpace(b.String())
+			if s != "" {
+				out = append(out, s)
+			}
+			b.Reset()
+			continue
+		}
+		b.WriteByte(c)
+	}
+	s := strings.TrimSpace(b.String())
+	if s != "" {
+		out = append(out, s)
+	}
+	return out
+}
+
+type schemaMigration struct {
+	Version   string    `gorm:"column:version;primaryKey;type:text"`
+	AppliedAt time.Time `gorm:"column:applied_at;autoCreateTime"`
+}
+
+func (schemaMigration) TableName() string {
+	return "schema_migrations"
+}
+
+func RunMigrations(ctx context.Context, db *gorm.DB, fs embed.FS) error {
 	if err := ensureSchemaMigrations(ctx, db); err != nil {
 		return fmt.Errorf("инициализация таблицы миграций: %w", err)
 	}
@@ -54,40 +108,42 @@ func RunMigrations(ctx context.Context, db *sql.DB, fs embed.FS) error {
 			continue
 		}
 
-		if _, err := db.ExecContext(ctx, sql); err != nil {
+		stmts := splitMigrationStatements(sql)
+		err = db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			for _, stmt := range stmts {
+				if err := tx.Exec(stmt).Error; err != nil {
+					return err
+				}
+			}
+			return markMigrationAppliedWithDB(tx, version)
+		})
+		if err != nil {
 			return fmt.Errorf("выполнение миграции %s: %w", version, err)
-		}
-		if err := markMigrationApplied(ctx, db, version); err != nil {
-			return fmt.Errorf("запись версии %s: %w", version, err)
 		}
 	}
 
 	return nil
 }
 
-func ensureSchemaMigrations(ctx context.Context, db *sql.DB) error {
-	_, err := db.ExecContext(ctx, `
-		CREATE TABLE IF NOT EXISTS schema_migrations (
-			version TEXT PRIMARY KEY,
-			applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-		)
-	`)
-	return err
+func ensureSchemaMigrations(ctx context.Context, db *gorm.DB) error {
+	return db.WithContext(ctx).AutoMigrate(&schemaMigration{})
 }
 
-func isMigrationApplied(ctx context.Context, db *sql.DB, version string) (bool, error) {
-	var n int
-	err := db.QueryRowContext(ctx, "SELECT 1 FROM schema_migrations WHERE version = $1", version).Scan(&n)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return false, nil
-		}
-		return false, err
-	}
-	return true, nil
+func isMigrationApplied(ctx context.Context, db *gorm.DB, version string) (bool, error) {
+	var count int64
+	err := db.WithContext(ctx).
+		Model(&schemaMigration{}).
+		Where("version = ?", version).
+		Count(&count).Error
+	return count > 0, err
 }
 
-func markMigrationApplied(ctx context.Context, db *sql.DB, version string) error {
-	_, err := db.ExecContext(ctx, "INSERT INTO schema_migrations (version) VALUES ($1)", version)
-	return err
+func markMigrationApplied(ctx context.Context, db *gorm.DB, version string) error {
+	return markMigrationAppliedWithDB(db.WithContext(ctx), version)
+}
+
+func markMigrationAppliedWithDB(db *gorm.DB, version string) error {
+	return db.Create(&schemaMigration{
+		Version: version,
+	}).Error
 }

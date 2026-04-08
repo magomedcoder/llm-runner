@@ -80,6 +80,12 @@ class AuthRemoteDataSource implements IAuthRemoteDataSource {
 
       await _client.logout(request);
     } on GrpcError catch (e) {
+      if (e.code == StatusCode.unauthenticated) {
+        Logs().d(
+          'AuthRemote: logout без действующей сессии на сервере (код ${e.code}), локальный выход ок',
+        );
+        return;
+      }
       Logs().w(
         'AuthRemote: logout gRPC code=${e.code} message=${e.message}',
         exception: e,

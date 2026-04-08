@@ -79,6 +79,12 @@ func chatSessionSystemMessage(sessionID int64, settings *domain.ChatSessionSetti
 	return domain.NewMessage(sessionID, text, domain.MessageRoleSystem)
 }
 
+func (c *ChatUseCase) llmChatSystemMessage(ctx context.Context, sessionID int64, settings *domain.ChatSessionSettings, userID int) *domain.Message {
+	msg := chatSessionSystemMessage(sessionID, settings)
+	c.appendMCPLLMContext(ctx, msg, settings, userID)
+	return msg
+}
+
 type ChatUseCase struct {
 	chatTx                       domain.ChatTransactionRunner
 	sessionRepo                  domain.ChatSessionRepository
@@ -93,7 +99,6 @@ type ChatUseCase struct {
 	runnerPool                   *service.Pool
 	runnerReg                    *service.Registry
 	attachmentsSaveDir           string
-	defaultRunnerAddr            string
 	historySummaryCache          *historySummaryCache
 	attachmentHydrateParallelism int
 	webSearchSettingsRepo        domain.WebSearchSettingsRepository
@@ -115,7 +120,6 @@ func NewChatUseCase(
 	runnerPool *service.Pool,
 	runnerReg *service.Registry,
 	attachmentsSaveDir string,
-	defaultRunnerAddr string,
 	attachmentHydrateParallelism int,
 	webSearchSettingsRepo domain.WebSearchSettingsRepository,
 	mcpServerRepo domain.MCPServerRepository,
@@ -135,7 +139,6 @@ func NewChatUseCase(
 		runnerPool:                   runnerPool,
 		runnerReg:                    runnerReg,
 		attachmentsSaveDir:           attachmentsSaveDir,
-		defaultRunnerAddr:            strings.TrimSpace(defaultRunnerAddr),
 		historySummaryCache:          newHistorySummaryCache(512),
 		webSearchSettingsRepo:        webSearchSettingsRepo,
 		mcpServerRepo:                mcpServerRepo,
@@ -196,7 +199,7 @@ func (c *ChatUseCase) GetSelectedRunner(ctx context.Context, userID int) (string
 			return a, nil
 		}
 	}
-	return c.defaultRunnerAddr, nil
+	return "", nil
 }
 
 func (c *ChatUseCase) SetSelectedRunner(ctx context.Context, userID int, runner string) error {
@@ -337,6 +340,9 @@ func (c *ChatUseCase) maybeInjectMCPTools(ctx context.Context, genParams *domain
 
 		prefix := strings.TrimSpace(srv.Name)
 		for _, t := range declared {
+			if strings.TrimSpace(t.Name) == "" {
+				continue
+			}
 			alias := mcpclient.ToolAlias(sid, t.Name)
 			n := normalizeToolName(alias)
 			if _, dup := allowed[n]; dup {
@@ -400,9 +406,22 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 		return "", fmt.Errorf("MCP-сервер недоступен")
 	}
 
+	toolCtx := ctx
+	if env := toolLoopEnvFrom(ctx); env != nil && mcpclient.SamplingEnabled() {
+		toolCtx = mcpclient.WithSamplingRunner(ctx, &mcpclient.SamplingRunner{
+			LLM:            c.llmRepo,
+			SessionID:      sessionID,
+			RunnerAddr:     env.RunnerAddr,
+			Model:          env.ResolvedModel,
+			StopSequences:  env.StopSequences,
+			TimeoutSeconds: env.TimeoutSeconds,
+			GenParams:      env.SamplingGen,
+		})
+	}
+
 	return runFnWithContext(ctx, func() (string, error) {
 		t0 := time.Now()
-		out, err := mcpclient.CallTool(ctx, srv, mcpToolName, params)
+		out, err := mcpclient.CallTool(toolCtx, srv, mcpToolName, params, c.mcpToolsListCache)
 		d := time.Since(t0)
 		if err != nil {
 			logger.W("MCP tools/call: session=%d server_id=%d tool=%q duration=%s err=%v", sessionID, serverID, mcpToolName, d, err)
@@ -456,7 +475,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 
 	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
 	messagesForLLM := make([]*domain.Message, 0, len(messages)+2)
-	messagesForLLM = append(messagesForLLM, chatSessionSystemMessage(sessionId, settings))
+	messagesForLLM = append(messagesForLLM, c.llmChatSystemMessage(ctx, sessionId, settings, userId))
 	messagesForLLM = append(messagesForLLM, messages...)
 	if len(attachmentContent) > 0 && attachmentName != "" {
 		userMsgForLLM := *userMsg
@@ -479,6 +498,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
 	c.maybeInjectWebSearchTool(ctx, genParams, settings)
 	c.maybeInjectMCPTools(ctx, genParams, settings, userId)
+	c.maybeInjectMCPBuiltinMetaTools(genParams, settings)
 
 	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
 		logger.E("SendMessage: подгрузка вложений для раннера: %v", err)
@@ -811,9 +831,10 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
 	c.maybeInjectWebSearchTool(ctx, genParams, settings)
 	c.maybeInjectMCPTools(ctx, genParams, settings, userId)
+	c.maybeInjectMCPBuiltinMetaTools(genParams, settings)
 
 	messagesForLLM := make([]*domain.Message, 0, len(messages)+1)
-	messagesForLLM = append(messagesForLLM, chatSessionSystemMessage(sessionId, settings))
+	messagesForLLM = append(messagesForLLM, c.llmChatSystemMessage(ctx, sessionId, settings, userId))
 	messagesForLLM = append(messagesForLLM, messages...)
 
 	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {

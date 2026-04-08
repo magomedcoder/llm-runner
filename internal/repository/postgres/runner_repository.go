@@ -35,10 +35,12 @@ func (r *runnerRepository) List(ctx context.Context) ([]domain.Runner, error) {
 	if err := r.db.WithContext(ctx).Order("id ASC").Find(&rows).Error; err != nil {
 		return nil, err
 	}
+
 	out := make([]domain.Runner, 0, len(rows))
 	for i := range rows {
 		out = append(out, rowToRunner(&rows[i]))
 	}
+
 	return out, nil
 }
 
@@ -51,7 +53,9 @@ func (r *runnerRepository) GetByID(ctx context.Context, id int64) (*domain.Runne
 		}
 		return nil, err
 	}
+
 	ru := rowToRunner(&row)
+
 	return &ru, nil
 }
 
@@ -62,8 +66,10 @@ func (r *runnerRepository) FirstEnabled(ctx context.Context) (*domain.Runner, er
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
+
 		return nil, err
 	}
+
 	ru := rowToRunner(&row)
 	return &ru, nil
 }
@@ -79,6 +85,7 @@ func (r *runnerRepository) Create(ctx context.Context, name, host string, port i
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return nil, err
 	}
+
 	ru := rowToRunner(&row)
 	return &ru, nil
 }
@@ -116,9 +123,11 @@ func (r *runnerRepository) SetEnabled(ctx context.Context, id int64, enabled boo
 	if res.Error != nil {
 		return res.Error
 	}
+
 	if res.RowsAffected == 0 {
 		return domain.ErrNotFound
 	}
+
 	return nil
 }
 
@@ -127,9 +136,11 @@ func (r *runnerRepository) Delete(ctx context.Context, id int64) error {
 	if res.Error != nil {
 		return res.Error
 	}
+
 	if res.RowsAffected == 0 {
 		return domain.ErrNotFound
 	}
+
 	return nil
 }
 
@@ -138,14 +149,17 @@ func (r *runnerRepository) FindIDByListenAddress(ctx context.Context, listenAddr
 	if listenAddr == "" {
 		return 0, false, nil
 	}
+
 	list, err := r.List(ctx)
 	if err != nil {
 		return 0, false, err
 	}
+
 	for i := range list {
 		if domain.RunnerListenAddress(list[i].Host, list[i].Port) == listenAddr {
 			return list[i].ID, true, nil
 		}
 	}
+
 	return 0, false, nil
 }

@@ -1,3 +1,4 @@
+import 'package:gen/domain/entities/mcp_probe_result_entity.dart';
 import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
@@ -96,4 +97,10 @@ class RunnersRepositoryImpl implements RunnersRepository {
 
   @override
   Future<void> deleteUserMcpServer(int id) => _remote.deleteUserMcpServer(id);
+
+  @override
+  Future<McpProbeResultEntity> probeUserMcpServer(int id) => _remote.probeUserMcpServer(id);
+
+  @override
+  Future<McpProbeResultEntity> probeMcpServer(int id) => _remote.probeMcpServer(id);
 }

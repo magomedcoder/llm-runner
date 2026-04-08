@@ -4,9 +4,7 @@ import 'package:desktop_drop/desktop_drop.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:gen/core/injector.dart';
 import 'package:gen/core/layout/responsive.dart';
-import 'package:gen/core/speech/vosk_model_sync_service.dart';
 import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
@@ -47,7 +45,6 @@ class _ChatScreenState extends State<ChatScreen> {
     _scrollController.addListener(_onChatScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ChatBloc>().add(ChatStarted());
-      unawaited(sl<VoskModelSyncService>().prefetchIfLoggedIn());
     });
   }
 
@@ -253,26 +250,6 @@ class _ChatScreenState extends State<ChatScreen> {
             _handleScrollOnStateChange(prev, state);
           });
           _prevStateForScroll = state;
-
-          if (state.error != null && state.error != prev.error) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) {
-                return;
-              }
-              showAppTopNotice(state.error!, error: true);
-            });
-          }
-
-          final notice = state.streamNotice;
-          if (notice != null && notice != prev.streamNotice) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (!mounted) {
-                return;
-              }
-              showAppTopNotice(notice);
-              context.read<ChatBloc>().add(const ChatDismissStreamNotice());
-            });
-          }
         },
         child: Builder(
           builder: (context) {

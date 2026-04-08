@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/magomedcoder/gen/api/pb/commonpb"
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
@@ -21,6 +22,8 @@ import (
 )
 
 const grpcMetadataRunnerAddress = "runner-address"
+
+const getRunnersProbeTimeout = 5 * time.Second
 
 type RunnerHandler struct {
 	runnerpb.UnimplementedRunnerServiceServer
@@ -79,7 +82,9 @@ func (h *RunnerHandler) GetRunners(ctx context.Context, _ *commonpb.Empty) (*run
 			continue
 		}
 
-		conn, gpuList, si, loaded := h.pool.ProbeLLMRunner(ctx, r.Address)
+		probeCtx, cancel := context.WithTimeout(ctx, getRunnersProbeTimeout)
+		conn, gpuList, si, loaded := h.pool.ProbeLLMRunner(probeCtx, r.Address)
+		cancel()
 		r.Connected = conn
 		if len(gpuList) > 0 {
 			r.Gpus = gpuList
@@ -570,9 +575,7 @@ func (h *RunnerHandler) CreateMCPServer(ctx context.Context, req *runnerpb.Creat
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
-	if h.mcpToolsListCache != nil {
-		h.mcpToolsListCache.InvalidateServerID(s.ID)
-	}
+	h.mcpToolsListCache.InvalidateServerID(s.ID)
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -658,9 +661,7 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
-	if h.mcpToolsListCache != nil {
-		h.mcpToolsListCache.InvalidateServerID(req.GetId())
-	}
+	h.mcpToolsListCache.InvalidateServerID(req.GetId())
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -687,9 +688,7 @@ func (h *RunnerHandler) DeleteMCPServer(ctx context.Context, req *runnerpb.Delet
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
-	if h.mcpToolsListCache != nil {
-		h.mcpToolsListCache.InvalidateServerID(id)
-	}
+	h.mcpToolsListCache.InvalidateServerID(id)
 
 	return &commonpb.Empty{}, nil
 }
@@ -767,9 +766,7 @@ func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.C
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
-	if h.mcpToolsListCache != nil {
-		h.mcpToolsListCache.InvalidateServerID(s.ID)
-	}
+	h.mcpToolsListCache.InvalidateServerID(s.ID)
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -861,9 +858,7 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
-	if h.mcpToolsListCache != nil {
-		h.mcpToolsListCache.InvalidateServerID(req.GetId())
-	}
+	h.mcpToolsListCache.InvalidateServerID(req.GetId())
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -904,9 +899,81 @@ func (h *RunnerHandler) DeleteUserMCPServer(ctx context.Context, req *runnerpb.D
 		return nil, ToStatusError(codes.Internal, err)
 	}
 
-	if h.mcpToolsListCache != nil {
-		h.mcpToolsListCache.InvalidateServerID(id)
-	}
+	h.mcpToolsListCache.InvalidateServerID(id)
 
 	return &commonpb.Empty{}, nil
+}
+
+func (h *RunnerHandler) probeMCPServerToResult(ctx context.Context, s *domain.MCPServer) *runnerpb.MCPProbeResult {
+	if !s.Enabled {
+		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: "сервер отключён"}
+	}
+	if err := h.cfg.ValidateMCPServerHTTP(s); err != nil {
+		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: err.Error()}
+	}
+	pr, err := mcpclient.ProbeServer(ctx, s, h.mcpToolsListCache)
+	if err != nil {
+		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: err.Error()}
+	}
+	return &runnerpb.MCPProbeResult{
+		Ok:              true,
+		ProtocolVersion: pr.ProtocolVersion,
+		ServerName:      pr.ServerName,
+		ServerVersion:   pr.ServerVersion,
+		Instructions:    pr.Instructions,
+		HasTools:        pr.HasTools,
+		HasResources:    pr.HasResources,
+		HasPrompts:      pr.HasPrompts,
+	}
+}
+
+func (h *RunnerHandler) ProbeUserMCPServer(ctx context.Context, req *runnerpb.GetMCPServerRequest) (*runnerpb.MCPProbeResult, error) {
+	user, err := GetUserFromContext(ctx, h.authUseCase)
+	if err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	s, err := h.mcpServersUC.GetForUser(ctx, req.GetId(), user.Id)
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return h.probeMCPServerToResult(ctx, s), nil
+}
+
+func (h *RunnerHandler) ProbeMCPServer(ctx context.Context, req *runnerpb.GetMCPServerRequest) (*runnerpb.MCPProbeResult, error) {
+	if err := RequireAdmin(ctx, h.authUseCase); err != nil {
+		return nil, err
+	}
+
+	if h.mcpServersUC == nil {
+		return nil, status.Error(codes.Internal, "MCP недоступен")
+	}
+
+	if req == nil || req.GetId() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "нужен положительный id")
+	}
+
+	s, err := h.mcpServersUC.GetGlobal(ctx, req.GetId())
+	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			return nil, status.Error(codes.NotFound, "MCP-сервер не найден")
+		}
+
+		return nil, ToStatusError(codes.Internal, err)
+	}
+
+	return h.probeMCPServerToResult(ctx, s), nil
 }

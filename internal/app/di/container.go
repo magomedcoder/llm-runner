@@ -2,11 +2,11 @@ package di
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
+	"github.com/magomedcoder/gen"
+	"github.com/magomedcoder/gen/internal/provider"
 	"path/filepath"
 
-	"github.com/magomedcoder/gen"
 	"github.com/magomedcoder/gen/api/pb/authpb"
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/editorpb"
@@ -18,17 +18,17 @@ import (
 	"github.com/magomedcoder/gen/internal/delivery/handler"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/mcpclient"
-	"github.com/magomedcoder/gen/internal/provider"
 	"github.com/magomedcoder/gen/internal/repository/postgres"
 	"github.com/magomedcoder/gen/internal/service"
 	"github.com/magomedcoder/gen/internal/usecase"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
+	"gorm.io/gorm"
 )
 
 type Container struct {
-	sqlDB         *sql.DB
+	db            *gorm.DB
 	pool          *service.Pool
 	fileRepo      domain.FileRepository
 	authHandler   *handler.AuthHandler
@@ -39,11 +39,6 @@ type Container struct {
 }
 
 func New(ctx context.Context, cfg *config.Config) (*Container, error) {
-	if err := bootstrap.CheckDatabase(ctx, cfg.Database); err != nil {
-		return nil, fmt.Errorf("инициализация базы данных: %w", err)
-	}
-	logger.D("База данных доступна")
-
 	mcpclient.SetHTTPHostPolicy(func(host string) bool {
 		return cfg.MCPHTTPHostAllowed(host)
 	})
@@ -51,53 +46,73 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 		logger.W("MCP: mcp.http_allow_any включён - разрешены любые исходящие HTTP(S) хосты (не для продакшена)")
 	}
 
-	gormDB, err := provider.NewDB(ctx, &cfg.Database, cfg.LogLevel)
+	if roots, err := mcpclient.RootsFromConfigStrings(cfg.MCP.Roots); err != nil {
+		logger.W("MCP: некорректный mcp.roots в конфиге: %v", err)
+	} else {
+		mcpclient.SetSessionRoots(roots)
+		if len(roots) > 0 {
+			logger.I("MCP: для clients/roots задано корней: %d", len(roots))
+		}
+	}
+
+	mcpclient.SetSamplingEnabled(cfg.MCP.SamplingEnabled)
+
+	if cfg.MCP.SamplingEnabled {
+		logger.W("MCP: sampling_enabled=true - серверы могут запрашивать доп. вызовы LLM во время tools/call (расход токенов)")
+	}
+
+	mcpclient.SetLogServerMessages(cfg.MCP.LogServerMessages)
+
+	if cfg.MCP.LogServerMessages {
+		logger.I("MCP: log_server_messages=true - уведомления notifications/message от серверов пишутся в журнал")
+	}
+
+	mcpclient.SetHTTPReuseSessions(cfg.MCP.HTTPReuseSessions)
+	mcpclient.SetHTTPSessionMaxIdleSec(cfg.MCP.HTTPSessionMaxIdleSeconds)
+
+	if cfg.MCP.HTTPReuseSessions {
+		logger.I("MCP: http_reuse_sessions=true - для sse/streamable одна сессия на сервер (сброс при ошибке, idle и CRUD); tools/call с sampling открывает отдельную сессию")
+	}
+
+	db, err := provider.NewDB(ctx, cfg, cfg.LogLevel)
 	if err != nil {
 		return nil, fmt.Errorf("подключение к базе данных: %w", err)
 	}
-	logger.I("Подключение к базе данных установлено")
 
-	sqlDB, err := gormDB.DB()
-	if err != nil {
-		return nil, fmt.Errorf("получение sql.DB: %w", err)
-	}
-
-	if err := bootstrap.RunMigrations(ctx, sqlDB, gen.Postgres); err != nil {
-		_ = sqlDB.Close()
+	if err := bootstrap.RunMigrations(ctx, db, gen.Postgres); err != nil {
 		return nil, fmt.Errorf("миграции: %w", err)
 	}
-	logger.D("Миграции применены")
 
-	userRepo := postgres.NewUserRepository(gormDB)
-	tokenRepo := postgres.NewUserSessionRepository(gormDB)
-	runnerRepo := postgres.NewRunnerRepository(gormDB)
-	sessionRepo := postgres.NewChatSessionRepository(gormDB)
-	chatPreferenceRepo := postgres.NewChatPreferenceRepository(gormDB, runnerRepo)
-	chatSessionSettingsRepo := postgres.NewChatSessionSettingsRepository(gormDB)
-	webSearchSettingsRepo := postgres.NewWebSearchSettingsRepository(gormDB)
-	mcpServerRepo := postgres.NewMCPServerRepository(gormDB)
-	editorHistoryRepo := postgres.NewEditorHistoryRepository(gormDB)
-	messageRepo := postgres.NewMessageRepository(gormDB)
-	messageEditRepo := postgres.NewMessageEditRepository(gormDB)
-	assistantRegenRepo := postgres.NewAssistantMessageRegenerationRepository(gormDB)
-	fileRepo := postgres.NewFileRepository(gormDB)
+	userRepo := postgres.NewUserRepository(db)
+	tokenRepo := postgres.NewUserSessionRepository(db)
+	runnerRepo := postgres.NewRunnerRepository(db)
+	sessionRepo := postgres.NewChatSessionRepository(db)
+	chatPreferenceRepo := postgres.NewChatPreferenceRepository(db, runnerRepo)
+	chatSessionSettingsRepo := postgres.NewChatSessionSettingsRepository(db)
+	webSearchSettingsRepo := postgres.NewWebSearchSettingsRepository(db)
+	mcpServerRepo := postgres.NewMCPServerRepository(db)
+	editorHistoryRepo := postgres.NewEditorHistoryRepository(db)
+	messageRepo := postgres.NewMessageRepository(db)
+	messageEditRepo := postgres.NewMessageEditRepository(db)
+	assistantRegenRepo := postgres.NewAssistantMessageRegenerationRepository(db)
+	fileRepo := postgres.NewFileRepository(db)
 
 	jwtService := service.NewJWTService(cfg)
 
 	if err := bootstrap.CreateFirstUser(ctx, userRepo, jwtService); err != nil {
-		_ = sqlDB.Close()
+		closeGormDB(db)
 		return nil, fmt.Errorf("первый пользователь: %w", err)
 	}
 	logger.D("Первый пользователь проверен/создан")
 
-	authTxRunner := postgres.NewAuthTransactionRunner(gormDB)
-	chatTxRunner := postgres.NewChatTransactionRunner(gormDB, runnerRepo)
+	authTxRunner := postgres.NewAuthTransactionRunner(db)
+	chatTxRunner := postgres.NewChatTransactionRunner(db, runnerRepo)
 
 	authUseCase := usecase.NewAuthUseCase(authTxRunner, userRepo, tokenRepo, jwtService)
 
 	runnerRows, err := runnerRepo.List(ctx)
 	if err != nil {
-		_ = sqlDB.Close()
+		closeGormDB(db)
 		return nil, fmt.Errorf("загрузка раннеров: %w", err)
 	}
 	runnerReg := service.NewRegistry(service.RunnerStatesFromDomain(runnerRows))
@@ -107,13 +122,14 @@ func New(ctx context.Context, cfg *config.Config) (*Container, error) {
 	webSearchSettingsUC := usecase.NewWebSearchSettingsUseCase(webSearchSettingsRepo)
 	mcpServersUC := usecase.NewMCPServersUseCase(mcpServerRepo)
 	mcpToolsListCache := mcpclient.NewToolsListCache()
+	mcpclient.SetToolsListCacheForNotifications(mcpToolsListCache)
 
-	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, runnerRepo, llmRepo, runnerPool, runnerReg, filepath.Join(cfg.DataDir, "uploads"), cfg.DefaultRunnerAddress(), cfg.AttachmentHydrateParallelism, webSearchSettingsRepo, mcpServerRepo, mcpToolsListCache)
+	chatUseCase := usecase.NewChatUseCase(chatTxRunner, sessionRepo, chatPreferenceRepo, chatSessionSettingsRepo, messageRepo, messageEditRepo, assistantRegenRepo, fileRepo, runnerRepo, llmRepo, runnerPool, runnerReg, filepath.Join(cfg.DataDir, "uploads"), cfg.AttachmentHydrateParallelism, webSearchSettingsRepo, mcpServerRepo, mcpToolsListCache)
 	editorUseCase := usecase.NewEditorUseCase(llmRepo, editorHistoryRepo, runnerRepo)
 	userUseCase := usecase.NewUserUseCase(userRepo, tokenRepo, jwtService)
 
 	return &Container{
-		sqlDB:         sqlDB,
+		db:            db,
 		pool:          runnerPool,
 		fileRepo:      fileRepo,
 		authHandler:   handler.NewAuthHandler(cfg, authUseCase),
@@ -137,5 +153,20 @@ func (c *Container) RegisterGRPC(s *grpc.Server) {
 
 func (c *Container) Close() error {
 	c.pool.Close()
-	return c.sqlDB.Close()
+	sqlDB, err := c.db.DB()
+	if err != nil {
+		return err
+	}
+	return sqlDB.Close()
+}
+
+func closeGormDB(g *gorm.DB) {
+	if g == nil {
+		return
+	}
+	sqlDB, err := g.DB()
+	if err != nil {
+		return
+	}
+	_ = sqlDB.Close()
 }

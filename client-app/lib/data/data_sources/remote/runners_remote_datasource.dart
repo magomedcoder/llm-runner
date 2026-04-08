@@ -5,6 +5,7 @@ import 'package:gen/core/log/logs.dart';
 import 'package:gen/domain/entities/gpu_info.dart' as gpu_ent;
 import 'package:gen/domain/entities/loaded_model_status.dart' as lm_ent;
 import 'package:gen/domain/entities/runner_info.dart' as domain;
+import 'package:gen/domain/entities/mcp_probe_result_entity.dart';
 import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/entities/server_info.dart' as srv_ent;
@@ -64,6 +65,10 @@ abstract class IRunnersRemoteDataSource {
   Future<McpServerEntity> updateUserMcpServer(McpServerEntity server);
 
   Future<void> deleteUserMcpServer(int id);
+
+  Future<McpProbeResultEntity> probeUserMcpServer(int id);
+
+  Future<McpProbeResultEntity> probeMcpServer(int id);
 }
 
 class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
@@ -354,6 +359,20 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
     }
   }
 
+  McpProbeResultEntity _mapMcpProbe(pb.MCPProbeResult r) {
+    return McpProbeResultEntity(
+      ok: r.ok,
+      errorMessage: r.errorMessage,
+      protocolVersion: r.protocolVersion,
+      serverName: r.serverName,
+      serverVersion: r.serverVersion,
+      instructions: r.instructions,
+      toolsSupported: r.hasTools,
+      resourcesSupported: r.hasResources,
+      promptsSupported: r.hasPrompts,
+    );
+  }
+
   McpServerEntity _mapMcp(pb.MCPServer s) {
     return McpServerEntity(
       id: s.id.toInt(),
@@ -493,6 +512,32 @@ class RunnersRemoteDataSource implements IRunnersRemoteDataSource {
       await _authGuard.execute(() => _channelManager.runnerClient.deleteUserMCPServer(pb.DeleteMCPServerRequest(id: Int64(id))));
     } catch (e) {
       Logs().e('RunnersRemote: deleteUserMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<McpProbeResultEntity> probeUserMcpServer(int id) async {
+    Logs().d('RunnersRemote: probeUserMcpServer id=$id');
+    try {
+      final resp = await _authGuard.execute(() => _channelManager.runnerClient.probeUserMCPServer(pb.GetMCPServerRequest(id: Int64(id))));
+
+      return _mapMcpProbe(resp);
+    } catch (e) {
+      Logs().e('RunnersRemote: probeUserMcpServer', exception: e);
+      rethrow;
+    }
+  }
+
+  @override
+  Future<McpProbeResultEntity> probeMcpServer(int id) async {
+    Logs().d('RunnersRemote: probeMcpServer id=$id');
+    try {
+      final resp = await _authGuard.execute(() => _channelManager.runnerClient.probeMCPServer(pb.GetMCPServerRequest(id: Int64(id))));
+
+      return _mapMcpProbe(resp);
+    } catch (e) {
+      Logs().e('RunnersRemote: probeMcpServer', exception: e);
       rethrow;
     }
   }

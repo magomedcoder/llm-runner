@@ -218,7 +218,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.extension_outlined),
                     title: const Text('Мои MCP-серверы'),
-                    subtitle: const Text('Подключить свои MCP сервера для инструментов'),
                     trailing: const Icon(Icons.chevron_right),
                     onTap: () {
                       Navigator.of(context).push(

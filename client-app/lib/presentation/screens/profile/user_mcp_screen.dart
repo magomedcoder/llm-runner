@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/core/mcp_connection_config.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
 import 'package:gen/presentation/widgets/mcp_connection_json_dialog_section.dart';
-
+import 'package:gen/presentation/widgets/mcp_probe_result_dialog.dart';
 class UserMcpScreen extends StatefulWidget {
   const UserMcpScreen({super.key});
 
@@ -46,9 +47,27 @@ class _UserMcpScreenState extends State<UserMcpScreen> {
         return;
       }
       setState(() {
-        _loadError = '$e';
+        _loadError = userSafeErrorMessage(
+          e,
+          fallback: 'Не удалось загрузить список серверов',
+        );
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _probe(McpServerEntity s) async {
+    try {
+      final r = await _repo.probeUserMcpServer(s.id);
+      if (!mounted) {
+        return;
+      }
+      await showMcpProbeResultDialog(context, r);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      showAppTopNotice('Проверка MCP: $e', error: true);
     }
   }
 
@@ -272,6 +291,11 @@ class _UserMcpScreenState extends State<UserMcpScreen> {
                   trailing: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      IconButton(
+                        tooltip: 'Проверить подключение',
+                        icon: const Icon(Icons.cable_rounded),
+                        onPressed: () => _probe(s),
+                      ),
                       IconButton(
                         icon: const Icon(Icons.edit_outlined),
                         onPressed: () => _openEditor(existing: s),

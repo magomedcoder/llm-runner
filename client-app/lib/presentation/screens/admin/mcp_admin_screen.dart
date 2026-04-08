@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/core/mcp_connection_config.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/core/ui/app_top_notice.dart';
 import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
 import 'package:gen/presentation/widgets/mcp_connection_json_dialog_section.dart';
-
+import 'package:gen/presentation/widgets/mcp_probe_result_dialog.dart';
 class McpAdminScreen extends StatefulWidget {
   const McpAdminScreen({super.key});
 
@@ -48,9 +49,28 @@ class _McpAdminScreenState extends State<McpAdminScreen> {
       }
 
       setState(() {
-        _loadError = '$e';
+        _loadError = userSafeErrorMessage(
+          e,
+          fallback: 'Не удалось загрузить список серверов',
+        );
         _loading = false;
       });
+    }
+  }
+
+  Future<void> _probe(McpServerEntity s) async {
+    try {
+      final r = await _repo.probeMcpServer(s.id);
+      if (!mounted) {
+        return;
+      }
+
+      await showMcpProbeResultDialog(context, r);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+      showAppTopNotice('Проверка MCP: $e', error: true);
     }
   }
 
@@ -237,7 +257,7 @@ class _McpAdminScreenState extends State<McpAdminScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MCP-серверы'),
+        title: const Text('MCP серверы'),
         actions: [
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
@@ -246,37 +266,46 @@ class _McpAdminScreenState extends State<McpAdminScreen> {
         onPressed: () => _openEditor(),
         child: const Icon(Icons.add),
       ),
-      body: ListView.builder(
+      body: ListView(
         padding: const EdgeInsets.all(16),
-        itemCount: _servers.length,
-        itemBuilder: (context, i) {
-          final s = _servers[i];
-          final title = s.name.isNotEmpty ? s.name : 'Сервер #${s.id}';
-          return Card(
-            child: ListTile(
-              title: Text(title),
-              subtitle: Text(
-                '${s.enabled ? "вкл" : "выкл"}  ${s.transport}  ${s.command.isNotEmpty ? s.command : s.url}',
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-              isThreeLine: true,
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  IconButton(
-                    icon: const Icon(Icons.edit_outlined),
-                    onPressed: () => _openEditor(existing: s),
+        children: [
+          ...List.generate(_servers.length, (i) {
+            final s = _servers[i];
+            final title = s.name.isNotEmpty ? s.name : 'Сервер #${s.id}';
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Card(
+                child: ListTile(
+                  title: Text(title),
+                  subtitle: Text(
+                    '${s.enabled ? "вкл" : "выкл"} ${s.transport} ${s.command.isNotEmpty ? s.command : s.url}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => _delete(s),
+                  isThreeLine: true,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        tooltip: 'Проверить подключение',
+                        icon: const Icon(Icons.cable_rounded),
+                        onPressed: () => _probe(s),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.edit_outlined),
+                        onPressed: () => _openEditor(existing: s),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () => _delete(s),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          }),
+        ],
       ),
     );
   }

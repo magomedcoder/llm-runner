@@ -1,3 +1,4 @@
+import 'package:gen/domain/entities/mcp_probe_result_entity.dart';
 import 'package:gen/domain/entities/mcp_server_entity.dart';
 import 'package:gen/domain/entities/runner_info.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
@@ -55,4 +56,8 @@ abstract class RunnersRepository {
   Future<McpServerEntity> updateUserMcpServer(McpServerEntity server);
 
   Future<void> deleteUserMcpServer(int id);
+
+  Future<McpProbeResultEntity> probeUserMcpServer(int id);
+
+  Future<McpProbeResultEntity> probeMcpServer(int id);
 }

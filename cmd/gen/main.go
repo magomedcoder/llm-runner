@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -16,26 +15,29 @@ import (
 )
 
 func main() {
-	configPath := flag.String("config", "config.yaml", "путь к YAML-конфигурации")
-	flag.Parse()
+	ctx := context.Background()
+	if err := run(ctx, "config.yaml"); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
 
-	cfg, err := config.LoadFrom(*configPath)
+func run(ctx context.Context, cfgPath string) error {
+	cfg, err := config.LoadFrom(cfgPath)
 	if err != nil {
 		logger.Default.SetLevel(logger.LevelInfo)
 		logger.E("Ошибка загрузки конфигурации: %v", err)
-		os.Exit(1)
+		return err
 	}
 
 	logger.Default.SetLevel(logger.ParseLevel(cfg.LogLevel))
-	logger.I("Запуск приложения (%s)", config.LoadedFrom)
-
-	ctx := context.Background()
 
 	c, err := di.New(ctx, cfg)
 	if err != nil {
 		logger.E("Сборка приложения: %v", err)
-		os.Exit(1)
+		return err
 	}
+
 	defer func() {
 		if err := c.Close(); err != nil {
 			logger.W("Закрытие ресурсов: %v", err)
@@ -49,22 +51,30 @@ func main() {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		logger.E("Ошибка запуска сервера на адресе %s: %v", addr, err)
-		os.Exit(1)
+		return err
 	}
 
 	logger.I("Сервер запущен на %s", addr)
 
+	errCh := make(chan error, 1)
 	go func() {
-		if err := grpcServer.Serve(listener); err != nil {
-			logger.E("Ошибка работы сервера: %v", err)
-			os.Exit(1)
-		}
+		errCh <- grpcServer.Serve(listener)
 	}()
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
 
-	grpcServer.GracefulStop()
-	logger.I("Сервер остановлен")
+	select {
+	case <-quit:
+		grpcServer.GracefulStop()
+		logger.I("Сервер остановлен")
+		return nil
+	case err := <-errCh:
+		if err != nil {
+			logger.E("Ошибка работы сервера: %v", err)
+			return err
+		}
+
+		return nil
+	}
 }

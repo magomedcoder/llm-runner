@@ -72,51 +72,51 @@ class EditorBloc extends Bloc<EditorEvent, EditorState> {
   ) async {
     Logs().d('EditorBloc: старт');
     emit(state.copyWith(runnersLoading: true));
+
+    List<RunnerInfo> runnerInfos = const [];
     try {
       final isAdmin = authBloc.state.user?.isAdmin ?? false;
-      final runnerInfos = isAdmin
-        ? await getRunnersUseCase()
-        : await getUserRunnersUseCase();
-      final runners = _extractAvailableRunners(runnerInfos);
-      final runnerNames = _extractRunnerNames(runnerInfos);
-
-      String? saved;
-      try {
-        saved = await getSelectedRunnerUseCase();
-      } catch (e) {
-        Logs().w('EditorBloc: не удалось загрузить раннер по умолчанию', exception: e);
-      }
-
-      String? effective = saved != null && runners.contains(saved) ? saved : null;
-      if (effective == null && runners.isNotEmpty) {
-        effective = runners.first;
-        try {
-          await setSelectedRunnerUseCase(effective);
-        } catch (e) {
-          Logs().w('EditorBloc: не удалось сохранить раннер по умолчанию', exception: e);
-        }
-      }
-
-      emit(
-        state.copyWith(
-          runners: runners,
-          runnerNames: runnerNames,
-          selectedRunner: effective,
-          clearSelectedRunner: effective == null,
-          runnersLoading: false,
-          documentVersion: state.documentVersion == 0 ? 1 : state.documentVersion,
-        ),
-      );
+      runnerInfos = isAdmin
+          ? await getRunnersUseCase()
+          : await getUserRunnersUseCase();
     } catch (e) {
-      Logs().e('EditorBloc: не удалось загрузить раннеры', exception: e);
-      emit(
-        state.copyWith(
-          runnersLoading: false,
-          error: 'Не удалось загрузить раннеры',
-          clearError: false,
-        ),
+      Logs().w(
+        'EditorBloc: список раннеров недоступен, редактор открывается без раннеров',
+        exception: e,
       );
     }
+
+    final runners = _extractAvailableRunners(runnerInfos);
+    final runnerNames = _extractRunnerNames(runnerInfos);
+
+    String? saved;
+    try {
+      saved = await getSelectedRunnerUseCase();
+    } catch (e) {
+      Logs().w('EditorBloc: не удалось загрузить раннер по умолчанию', exception: e);
+    }
+
+    String? effective = saved != null && runners.contains(saved) ? saved : null;
+    if (effective == null && runners.isNotEmpty) {
+      effective = runners.first;
+      try {
+        await setSelectedRunnerUseCase(effective);
+      } catch (e) {
+        Logs().w('EditorBloc: не удалось сохранить раннер по умолчанию', exception: e);
+      }
+    }
+
+    emit(
+      state.copyWith(
+        runners: runners,
+        runnerNames: runnerNames,
+        selectedRunner: effective,
+        clearSelectedRunner: effective == null,
+        runnersLoading: false,
+        clearError: true,
+        documentVersion: state.documentVersion == 0 ? 1 : state.documentVersion,
+      ),
+    );
   }
 
   Future<void> _onSelectRunner(

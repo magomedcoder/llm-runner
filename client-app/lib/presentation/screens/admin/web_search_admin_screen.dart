@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:gen/core/injector.dart' as di;
 import 'package:gen/core/ui/app_top_notice.dart';
+import 'package:gen/core/user_safe_error.dart';
 import 'package:gen/domain/entities/web_search_settings.dart';
 import 'package:gen/domain/repositories/runners_repository.dart';
 
@@ -68,7 +69,10 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
         return;
       }
       setState(() {
-        _loadError = '$e';
+        _loadError = userSafeErrorMessage(
+          e,
+          fallback: 'Не удалось загрузить настройки',
+        );
         _loading = false;
       });
     }
@@ -78,7 +82,7 @@ class _WebSearchAdminScreenState extends State<WebSearchAdminScreen> {
     final maxRaw = _maxResultsCtrl.text.trim();
     final maxParsed = int.tryParse(maxRaw);
     if (maxParsed == null || maxParsed <= 0) {
-      showAppTopNotice('Укажите целое число результатов (1–50)', error: true);
+      showAppTopNotice('Укажите целое число результатов (1-50)', error: true);
       return;
     }
 

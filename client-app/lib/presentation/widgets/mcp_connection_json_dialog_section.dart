@@ -17,6 +17,56 @@ class McpConnectionJsonDialogSection extends StatelessWidget {
     jsonCtrl.selection = TextSelection.collapsed(offset: text.length);
   }
 
+  Widget _documentationExpansion(BuildContext context, ThemeData theme) {
+    final cs = theme.colorScheme;
+
+    final tile = ExpansionTile(
+      maintainState: true,
+      tilePadding: isNew
+        ? const EdgeInsets.symmetric(horizontal: 12, vertical: 6)
+        : EdgeInsets.zero,
+      childrenPadding: EdgeInsets.fromLTRB(
+          isNew ? 12 : 0, 0,
+          isNew ? 12 : 0, 8
+      ),
+      title: Text('Документация'),
+      shape: const RoundedRectangleBorder(),
+      collapsedShape: const RoundedRectangleBorder(),
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: SelectableText(
+            McpConnectionConfig.documentation,
+            style: theme.textTheme.bodySmall?.copyWith(
+              height: 1.45,
+            ),
+          ),
+        ),
+      ],
+    );
+
+    final themed = Theme(
+      data: theme.copyWith(dividerColor: Colors.transparent),
+      child: tile,
+    );
+
+    if (!isNew) {
+      return themed;
+    }
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cs.primaryContainer.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: cs.primary.withValues(alpha: 0.38),
+          width: 1.5,
+        ),
+      ),
+      child: themed,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -73,24 +123,8 @@ class McpConnectionJsonDialogSection extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 4),
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          childrenPadding: const EdgeInsets.only(bottom: 8),
-          title: Text('Документация'),
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SelectableText(
-                McpConnectionConfig.documentation,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: theme.colorScheme.onSurfaceVariant,
-                  height: 1.45,
-                ),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 4),
+        _documentationExpansion(context, theme),
+        const SizedBox(height: 12),
         TextField(
           controller: jsonCtrl,
           maxLines: 28,

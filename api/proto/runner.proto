@@ -52,6 +52,10 @@ service RunnerService {
   rpc UpdateUserMCPServer(UpdateMCPServerRequest) returns (MCPServer);
 
   rpc DeleteUserMCPServer(DeleteMCPServerRequest) returns (common.Empty);
+
+  rpc ProbeUserMCPServer(GetMCPServerRequest) returns (MCPProbeResult);
+
+  rpc ProbeMCPServer(GetMCPServerRequest) returns (MCPProbeResult);
 }
 
 message CreateRunnerRequest {
@@ -231,4 +235,16 @@ message UpdateMCPServerRequest {
 
 message DeleteMCPServerRequest {
   int64 id = 1;
+}
+
+message MCPProbeResult {
+  bool ok = 1;
+  string error_message = 2;
+  string protocol_version = 3;
+  string server_name = 4;
+  string server_version = 5;
+  string instructions = 6;
+  bool has_tools = 7;
+  bool has_resources = 8;
+  bool has_prompts = 9;
 }

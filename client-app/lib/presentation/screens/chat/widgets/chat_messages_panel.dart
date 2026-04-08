@@ -2,14 +2,10 @@ import 'dart:math' as math;
 
 import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
-import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_drop_overlay.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_message_list.dart';
-import 'package:gen/presentation/screens/chat/widgets/chat_runners_inactive_banner.dart';
 
 class ChatMessagesPanel extends StatelessWidget {
   const ChatMessagesPanel({
@@ -53,11 +49,6 @@ class ChatMessagesPanel extends StatelessWidget {
             Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (state.hasActiveRunners == false)
-                  ChatRunnersInactiveBanner(
-                    isRefreshing: state.runnersStatusRefreshing,
-                    onRefresh: () => context.read<ChatBloc>().add(const ChatLoadRunners()),
-                  ),
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
@@ -90,11 +81,6 @@ class ChatMessagesPanel extends StatelessWidget {
         children: [
           Column(
             children: [
-              if (state.hasActiveRunners == false)
-                ChatRunnersInactiveBanner(
-                  isRefreshing: state.runnersStatusRefreshing,
-                  onRefresh: () => context.read<ChatBloc>().add(const ChatLoadRunners()),
-                ),
               Expanded(
                 child: ChatMessageList(
                   scrollController: scrollController,

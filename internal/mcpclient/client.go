@@ -190,7 +190,43 @@ func timeoutFor(srv *domain.MCPServer) time.Duration {
 	return time.Duration(sec) * time.Second
 }
 
-func withSession(ctx context.Context, srv *domain.MCPServer, fn func(context.Context, *mcp.ClientSession) error) error {
+func buildMCPClientOptions(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache) *mcp.ClientOptions {
+	caps := &mcp.ClientCapabilities{}
+	if r := rootsForSession(); len(r) > 0 {
+		caps.RootsV2 = &mcp.RootCapabilities{ListChanged: true}
+	}
+
+	opts := &mcp.ClientOptions{
+		Capabilities: caps,
+	}
+	if s := samplingClientOptions(ctx); s != nil {
+		opts.CreateMessageHandler = s.CreateMessageHandler
+		opts.CreateMessageWithToolsHandler = s.CreateMessageWithToolsHandler
+	}
+
+	if n := notifyForListChangedHandlers(notify); n != nil && srv != nil && srv.ID > 0 {
+		sid := srv.ID
+		opts.ToolListChangedHandler = func(context.Context, *mcp.ToolListChangedRequest) {
+			n.InvalidateServerTools(sid)
+		}
+
+		opts.ResourceListChangedHandler = func(context.Context, *mcp.ResourceListChangedRequest) {
+			n.InvalidateServerResources(sid)
+		}
+
+		opts.PromptListChangedHandler = func(context.Context, *mcp.PromptListChangedRequest) {
+			n.InvalidateServerPrompts(sid)
+		}
+	}
+
+	if LogServerMessages() && srv != nil {
+		opts.LoggingMessageHandler = loggingMessageHandlerForServer(strings.TrimSpace(srv.Name), srv.ID)
+	}
+
+	return opts
+}
+
+func withEphemeralSession(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache, fn func(context.Context, *mcp.ClientSession) error) error {
 	transport, err := transportFor(ctx, srv)
 	if err != nil {
 		return err
@@ -199,9 +235,12 @@ func withSession(ctx context.Context, srv *domain.MCPServer, fn func(context.Con
 	tctx, cancel := context.WithTimeout(ctx, timeoutFor(srv))
 	defer cancel()
 
-	cli := mcp.NewClient(&mcp.Implementation{Name: "gen", Version: "1.0.0"}, &mcp.ClientOptions{
-		Capabilities: &mcp.ClientCapabilities{},
-	})
+	opts := buildMCPClientOptions(ctx, srv, notify)
+	cli := mcp.NewClient(&mcp.Implementation{Name: "gen", Version: "1.0.0"}, opts)
+	if r := rootsForSession(); len(r) > 0 {
+		cli.AddRoots(r...)
+	}
+
 	session, err := cli.Connect(tctx, transport, nil)
 	if err != nil {
 		return err
@@ -211,6 +250,14 @@ func withSession(ctx context.Context, srv *domain.MCPServer, fn func(context.Con
 	}()
 
 	return fn(tctx, session)
+}
+
+func withSession(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache, fn func(context.Context, *mcp.ClientSession) error) error {
+	if useHTTPSessionPool(ctx, srv) {
+		return globalHTTPPool.run(ctx, srv, notify, fn)
+	}
+
+	return withEphemeralSession(ctx, srv, notify, fn)
 }
 
 func inputSchemaToParametersJSON(schema any) string {
@@ -227,8 +274,12 @@ func inputSchemaToParametersJSON(schema any) string {
 }
 
 func ListTools(ctx context.Context, srv *domain.MCPServer) ([]DeclaredTool, error) {
+	return listTools(ctx, srv, nil)
+}
+
+func listTools(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCache) ([]DeclaredTool, error) {
 	var out []DeclaredTool
-	err := withSession(ctx, srv, func(cctx context.Context, session *mcp.ClientSession) error {
+	err := withSession(ctx, srv, notify, func(cctx context.Context, session *mcp.ClientSession) error {
 		res, err := session.ListTools(cctx, &mcp.ListToolsParams{})
 		if err != nil {
 			return err
@@ -249,55 +300,24 @@ func ListTools(ctx context.Context, srv *domain.MCPServer) ([]DeclaredTool, erro
 		return nil
 	})
 
+	recordListTools(err)
 	return out, err
 }
 
-func callToolResultString(r *mcp.CallToolResult) string {
-	if r == nil {
-		return ""
-	}
-
-	var parts []string
-	for _, c := range r.Content {
-		if c == nil {
-			continue
-		}
-
-		switch x := c.(type) {
-		case *mcp.TextContent:
-			if strings.TrimSpace(x.Text) != "" {
-				parts = append(parts, x.Text)
-			}
-		default:
-			b, err := json.Marshal(c)
-			if err == nil && len(b) > 0 {
-				parts = append(parts, string(b))
-			}
-		}
-	}
-
-	if r.StructuredContent != nil {
-		b, _ := json.Marshal(r.StructuredContent)
-		if len(b) > 0 {
-			parts = append(parts, string(b))
-		}
-	}
-
-	if len(parts) == 0 && r.IsError {
-		return "ошибка инструмента (пустой ответ)"
-	}
-
-	return strings.Join(parts, "\n")
-}
-
-func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, arguments json.RawMessage) (string, error) {
+func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, arguments json.RawMessage, notify ...*ToolsListCache) (string, error) {
 	if strings.TrimSpace(mcpToolName) == "" {
+		recordCallToolTransportErr()
 		return "", errors.New("пустое имя инструмента MCP")
+	}
+
+	var nc *ToolsListCache
+	if len(notify) > 0 {
+		nc = notify[0]
 	}
 
 	var result string
 	var callErr error
-	err := withSession(ctx, srv, func(cctx context.Context, session *mcp.ClientSession) error {
+	err := withSession(ctx, srv, nc, func(cctx context.Context, session *mcp.ClientSession) error {
 		var args any
 		if len(arguments) > 0 {
 			if err := json.Unmarshal(arguments, &args); err != nil {
@@ -317,7 +337,7 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 			return err
 		}
 
-		result = callToolResultString(res)
+		result = CallToolResultString(res)
 		if res != nil && res.IsError {
 			callErr = errors.New(strings.TrimSpace(result))
 		}
@@ -326,12 +346,15 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 	})
 
 	if err != nil {
+		recordCallToolTransportErr()
 		return "", err
 	}
 
 	if callErr != nil {
+		recordCallToolMCPError()
 		return result, callErr
 	}
 
+	recordCallToolOK()
 	return result, nil
 }

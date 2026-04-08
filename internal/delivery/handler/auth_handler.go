@@ -46,7 +46,7 @@ func (a *AuthHandler) RefreshToken(ctx context.Context, req *authpb.RefreshToken
 	accessToken, refreshToken, err := a.authUseCase.RefreshToken(ctx, req.RefreshToken)
 	if err != nil {
 		logger.W("RefreshToken: %v", err)
-		return nil, ToStatusError(codes.Unauthenticated, err)
+		return nil, status.Error(codes.Unauthenticated, err.Error())
 	}
 	logger.I("RefreshToken: успешно")
 
