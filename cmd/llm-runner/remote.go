@@ -219,6 +219,10 @@ func cmdRemoteRun() *cli.Command {
 					return err
 				}
 
+				if r := msg.GetReasoningContent(); r != "" {
+					fmt.Print(r)
+				}
+
 				if msg.GetContent() != "" {
 					fmt.Print(msg.GetContent())
 				}

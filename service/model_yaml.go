@@ -188,6 +188,7 @@ func MergeGenParams(req *domain.GenerationParams, yamlCfg *ModelYAML) *domain.Ge
 		out.TopK = req.TopK
 		out.TopP = req.TopP
 		out.MinP = req.MinP
+		out.EnableThinking = req.EnableThinking
 		out.ResponseFormat = req.ResponseFormat
 		if len(req.Tools) > 0 {
 			out.Tools = append([]domain.Tool(nil), req.Tools...)

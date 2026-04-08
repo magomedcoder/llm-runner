@@ -644,7 +644,7 @@ func (s *LlamaService) UnloadModel(ctx context.Context) error {
 	return nil
 }
 
-func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
+func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
 	if MessagesHaveVisionAttachments(messages) {
 		return nil, fmt.Errorf("llama: vision-вложения не поддерживаются текущим API")
 	}
@@ -752,7 +752,7 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 	chatMessages := toLlamaChatMessages(norm)
 	chatMessages = applyResponseFormatToChatMessages(chatMessages, genMerged)
 
-	out := make(chan string, 32)
+	out := make(chan domain.TextStreamChunk, 32)
 	go func() {
 		defer close(out)
 		defer genCtx.Close()
@@ -866,17 +866,17 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 			generateOpts = append(generateOpts, llama.WithDraftTokens(s.speculativeDraftTokens))
 		}
 
-		emitToken := func(token string) {
-			if token == "" {
+		emitChunk := func(content, reasoning string) {
+			if content == "" && reasoning == "" {
 				return
 			}
 			select {
 			case <-ctx.Done():
-			case out <- token:
+			case out <- domain.TextStreamChunk{Content: content, ReasoningContent: reasoning}:
 			}
 		}
 
-		streamFilter := newStopStreamFilter(stopForPredict, emitToken)
+		streamFilter := newStopStreamFilter(stopForPredict, func(s string) { emitChunk(s, "") })
 		if useChatAPI {
 			chatOpts := llama.ChatOptions{
 				StopWords:       stopForPredict,
@@ -886,7 +886,10 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 			if s.chatStreamBufferSize > 0 {
 				chatOpts.StreamBufferSize = s.chatStreamBufferSize
 			}
-			if s.chatEnableThinking != nil {
+			if genMerged != nil && genMerged.EnableThinking != nil {
+				v := *genMerged.EnableThinking
+				chatOpts.EnableThinking = &v
+			} else if s.chatEnableThinking != nil {
 				v := *s.chatEnableThinking
 				chatOpts.EnableThinking = &v
 			}
@@ -919,10 +922,12 @@ func (s *LlamaService) SendMessage(ctx context.Context, model string, messages [
 
 			deltas, errs := genCtx.ChatStream(ctx, chatMessages, chatOpts)
 			for d := range deltas {
-				if d.Content == "" {
-					continue
+				if d.ReasoningContent != "" {
+					emitChunk("", d.ReasoningContent)
 				}
-				streamFilter.push(d.Content)
+				if d.Content != "" {
+					streamFilter.push(d.Content)
+				}
 			}
 			if err := <-errs; err != nil {
 				streamFilter.flush()

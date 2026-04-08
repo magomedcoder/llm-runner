@@ -40,6 +40,11 @@ func mapGenerationParamsFromProto(in *llmrunnerpb.GenerationParams) *domain.Gene
 		out.TopP = &v
 	}
 
+	if in.EnableThinking != nil {
+		v := in.GetEnableThinking()
+		out.EnableThinking = &v
+	}
+
 	if rf := in.GetResponseFormat(); rf != nil {
 		var schema *string
 		if rf.Schema != nil {
@@ -215,21 +220,25 @@ func (s *Server) SendMessage(req *llmrunnerpb.SendMessageRequest, stream llmrunn
 	hasContent := false
 	var fullOutput strings.Builder
 	for chunk := range ch {
-		if chunk != "" {
-			fullOutput.WriteString(chunk)
-			if !firstToken {
-				ttft = time.Since(start)
-				firstToken = true
-			}
+		if chunk.Content == "" && chunk.ReasoningContent == "" {
+			continue
+		}
+		if chunk.Content != "" {
+			fullOutput.WriteString(chunk.Content)
+		}
+		if !firstToken {
+			ttft = time.Since(start)
+			firstToken = true
+		}
 
-			hasContent = true
-			tokens++
-			if err := stream.Send(&llmrunnerpb.ChatResponse{
-				Content: chunk,
-				Done:    false,
-			}); err != nil {
-				return err
-			}
+		hasContent = true
+		tokens++
+		resp := &llmrunnerpb.ChatResponse{Done: false, Content: chunk.Content}
+		if rc := chunk.ReasoningContent; rc != "" {
+			resp.ReasoningContent = &rc
+		}
+		if err := stream.Send(resp); err != nil {
+			return err
 		}
 	}
 

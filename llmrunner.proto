@@ -111,6 +111,7 @@ message ChatResponse {
   int64 created_at = 4;
   bool done = 5;
   optional string tool_action_json = 6;
+  optional string reasoning_content = 7;
 }
 
 message SendMessageRequest {
@@ -140,6 +141,7 @@ message GenerationParams {
   optional float top_p = 4;
   ResponseFormat response_format = 5;
   repeated Tool tools = 6;
+  optional bool enable_thinking = 7;
 }
 
 message EmbedRequest {

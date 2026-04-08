@@ -11,7 +11,7 @@ import (
 type mockTextBackend struct {
 	checkConn  func(context.Context) (bool, error)
 	getModels  func(context.Context) ([]string, error)
-	sendMsg    func(context.Context, string, []*domain.AIChatMessage, []string) (chan string, error)
+	sendMsg    func(context.Context, string, []*domain.AIChatMessage, []string) (chan domain.TextStreamChunk, error)
 	embed      func(context.Context, string, string) ([]float32, error)
 	embedBatch func(context.Context, string, []string) ([][]float32, error)
 }
@@ -44,12 +44,12 @@ func (m *mockTextBackend) UnloadModel(ctx context.Context) error {
 	return nil
 }
 
-func (m *mockTextBackend) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
+func (m *mockTextBackend) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
 	if m.sendMsg != nil {
 		return m.sendMsg(ctx, model, messages, stopSequences)
 	}
 
-	ch := make(chan string)
+	ch := make(chan domain.TextStreamChunk)
 	close(ch)
 
 	return ch, nil

@@ -57,6 +57,10 @@ func mapGenerationParamsToProto(in *domain.GenerationParams) *llmrunnerpb.Genera
 		out.TopP = in.TopP
 	}
 
+	if in.EnableThinking != nil {
+		out.EnableThinking = in.EnableThinking
+	}
+
 	if len(in.Tools) > 0 {
 		out.Tools = make([]*llmrunnerpb.Tool, 0, len(in.Tools))
 		for _, t := range in.Tools {
@@ -343,7 +347,7 @@ func (p *Pool) GetServerInfo(ctx context.Context, address string) *llmrunnerpb.S
 	return resp
 }
 
-func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64, model string, messages []*domain.AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *domain.GenerationParams) (chan string, error) {
+func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64, model string, messages []*domain.AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
 	client, err := p.getConn(ctx, addr)
 	if err != nil {
 		return nil, err
@@ -368,7 +372,7 @@ func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64,
 		return nil, fmt.Errorf("раннер %s: %w", addr, err)
 	}
 
-	out := make(chan string, 100)
+	out := make(chan domain.TextStreamChunk, 100)
 	go func() {
 		defer close(out)
 		for {
@@ -377,11 +381,12 @@ func (p *Pool) trySendMessage(ctx context.Context, addr string, sessionID int64,
 				return
 			}
 
-			if msg.Content != "" {
+			rc := msg.GetReasoningContent()
+			if msg.GetContent() != "" || rc != "" {
 				select {
 				case <-ctx.Done():
 					return
-				case out <- msg.Content:
+				case out <- domain.TextStreamChunk{Content: msg.GetContent(), ReasoningContent: rc}:
 				}
 			}
 			if msg.Done {
@@ -415,7 +420,7 @@ func (p *Pool) orderedAddresses(startAddr string) []string {
 	return order
 }
 
-func (p *Pool) SendMessage(ctx context.Context, sessionID int64, model string, messages []*domain.AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *domain.GenerationParams) (chan string, error) {
+func (p *Pool) SendMessage(ctx context.Context, sessionID int64, model string, messages []*domain.AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
 	firstAddr, ok := p.pickRunner()
 	if !ok {
 		logger.W("Pool: нет доступных раннеров для сессии %d", sessionID)

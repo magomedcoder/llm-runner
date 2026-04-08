@@ -229,8 +229,8 @@ func (s *LlamaService) UnloadModel(ctx context.Context) error {
 	return nil
 }
 
-func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
-	ch := make(chan string)
+func (s *LlamaService) SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
+	ch := make(chan domain.TextStreamChunk)
 	close(ch)
 	return ch, fmt.Errorf("llama отключена")
 }

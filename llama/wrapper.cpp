@@ -1152,8 +1152,13 @@ int llama_wrapper_embeddings(void* ctx, const char* text, float* embeddings, int
             llama_batch_free(batch);
         }
 
-        // Получаем эмбеддинги из последовательности 0 (работает для single- и multi-sequence контекстов)
+        // Пулинг MEAN/LAST/CLS кладёт вектор в embd_seq для LLAMA_POOLING_TYPE_NONE - только по-токенные строки (llama_get_embeddings_ith)
+        // Раньше всегда вызывали *_seq - на обычных LLM без pooling в GGUF это всегда NULL
         const float* embd = llama_get_embeddings_seq(wrapper->ctx, 0);
+        if (!embd) {
+            embd = llama_get_embeddings_ith(wrapper->ctx, -1);
+        }
+
         if (!embd) {
             g_last_error = "Не удалось получить векторные представления из контекста";
             return -1;
@@ -1181,6 +1186,17 @@ int llama_wrapper_embeddings_batch(void* ctx, const char** texts, int n_texts, f
     auto wrapper = static_cast<llama_wrapper_context_t*>(ctx);
 
     try {
+        // При отсутствии пулинга seq-эмбеддинги недоступны; отдельный decode на текст совпадает
+        // с однопроходной логикой и даёт корректный вектор последнего токена на строку.
+        if (llama_pooling_type(wrapper->ctx) == LLAMA_POOLING_TYPE_NONE) {
+            for (int i = 0; i < n_texts; i++) {
+                if (llama_wrapper_embeddings(ctx, texts[i], embeddings + i * n_embd, n_embd) < 0) {
+                    return -1;
+                }
+            }
+            return n_texts;
+        }
+
         // Очищаем KV-кэш для гарантии чистого состояния
         llama_memory_clear(llama_get_memory(wrapper->ctx), true);
 

@@ -25,6 +25,7 @@ type GenerationParams struct {
 	TopK           *int32
 	TopP           *float32
 	MinP           *float32
+	EnableThinking *bool
 	ResponseFormat *ResponseFormat
 	Tools          []Tool
 }
@@ -34,5 +35,5 @@ type LLMProvider interface {
 
 	GetModels(ctx context.Context) ([]string, error)
 
-	SendMessage(ctx context.Context, sessionID int64, model string, messages []*AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *GenerationParams) (chan string, error)
+	SendMessage(ctx context.Context, sessionID int64, model string, messages []*AIChatMessage, stopSequences []string, timeoutSeconds int32, genParams *GenerationParams) (chan TextStreamChunk, error)
 }

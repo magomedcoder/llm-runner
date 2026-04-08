@@ -36,7 +36,7 @@ func (t *Text) UnloadModel(ctx context.Context) error {
 	return t.backend.UnloadModel(ctx)
 }
 
-func (t *Text) SendMessage(ctx context.Context, sessionId int64, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error) {
+func (t *Text) SendMessage(ctx context.Context, sessionId int64, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error) {
 	return t.backend.SendMessage(ctx, model, messages, stopSequences, genParams)
 }
 

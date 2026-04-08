@@ -21,7 +21,7 @@ type TextBackend interface {
 
 	UnloadModel(ctx context.Context) error
 
-	SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error)
+	SendMessage(ctx context.Context, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error)
 
 	Embed(ctx context.Context, model string, text string) ([]float32, error)
 
@@ -39,7 +39,7 @@ type TextProvider interface {
 
 	UnloadModel(ctx context.Context) error
 
-	SendMessage(ctx context.Context, sessionId int64, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan string, error)
+	SendMessage(ctx context.Context, sessionId int64, model string, messages []*domain.AIChatMessage, stopSequences []string, genParams *domain.GenerationParams) (chan domain.TextStreamChunk, error)
 
 	Embed(ctx context.Context, model string, text string) ([]float32, error)
 
