@@ -7,11 +7,14 @@ const (
 	StreamChunkKindToolStatus
 	StreamChunkKindNotice
 	StreamChunkKindReasoning
+	StreamChunkKindRAGMeta
 )
 
 type ChatStreamChunk struct {
-	Kind      StreamChunkKind
-	Text      string
-	ToolName  string
-	MessageID int64
+	Kind           StreamChunkKind
+	Text           string
+	ToolName       string
+	MessageID      int64
+	RAGMode        string
+	RAGSourcesJSON string
 }

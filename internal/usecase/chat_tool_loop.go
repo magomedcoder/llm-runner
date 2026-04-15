@@ -452,13 +452,14 @@ func (c *ChatUseCase) sendMessageWithToolLoop(
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
 	historyInitiallyTrimmed bool,
+	ragStream *ragStreamMeta,
 ) (chan ChatStreamChunk, error) {
 	if genParams == nil || len(genParams.Tools) == 0 {
 		return nil, fmt.Errorf("внутренняя ошибка: tool loop без tools")
 	}
 
 	out := make(chan ChatStreamChunk, 64)
-	go c.runChatToolLoop(ctx, userID, sessionID, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyInitiallyTrimmed, out)
+	go c.runChatToolLoop(ctx, userID, sessionID, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyInitiallyTrimmed, ragStream, out)
 
 	return out, nil
 }
@@ -474,6 +475,7 @@ func (c *ChatUseCase) runChatToolLoop(
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
 	historyInitiallyTrimmed bool,
+	ragStream *ragStreamMeta,
 	out chan<- ChatStreamChunk,
 ) {
 	defer close(out)
@@ -501,6 +503,10 @@ func (c *ChatUseCase) runChatToolLoop(
 	allowed := allowedToolNameSet(genParams.Tools)
 	gp := cloneGenParamsForToolCalls(genParams)
 	history := append([]*domain.Message(nil), messagesForLLM...)
+
+	if ragStream != nil {
+		_ = send(ragStream.asChunk())
+	}
 
 	if historyInitiallyTrimmed {
 		_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice})
@@ -683,8 +689,8 @@ func (c *ChatUseCase) runChatToolLoop(
 		}
 	}
 
-	logger.W("ChatUseCase: session=%d превышен лимит итераций tool-calling (%d)", sessionID, maxToolRounds)
-	sendErr(fmt.Errorf("превышено число итераций tool-calling (%d)", maxToolRounds))
+	logger.W("ChatUseCase: сессия=%d превышен лимит итераций вызова инструментов (%d)", sessionID, maxToolRounds)
+	sendErr(fmt.Errorf("превышено число итераций вызова инструментов (%d)", maxToolRounds))
 }
 
 func (c *ChatUseCase) toolProgressDisplayName(ctx context.Context, sessionID int64, normalizedName string, rawToolName string) string {
@@ -822,7 +828,7 @@ func optionalInt32Field(m map[string]json.RawMessage, key string) (int32, bool, 
 func (c *ChatUseCase) toolApplySpreadsheet(ctx context.Context, userID int, sessionID int64, params json.RawMessage) (string, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(params, &m); err != nil {
-		return "", fmt.Errorf("parameters apply_spreadsheet: %w", err)
+		return "", fmt.Errorf("параметры apply_spreadsheet: %w", err)
 	}
 
 	ops, err := mustStringField(m, "operations_json")
@@ -906,7 +912,7 @@ func (c *ChatUseCase) toolWebSearch(ctx context.Context, _ int, sessionID int64,
 
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(params, &m); err != nil {
-		return "", fmt.Errorf("parameters web_search: %w", err)
+		return "", fmt.Errorf("параметры web_search: %w", err)
 	}
 
 	q, err := mustStringField(m, "query")
@@ -938,7 +944,7 @@ func filterExecutableToolRows(rows []cohereActionRow) []cohereActionRow {
 func (c *ChatUseCase) toolBuildDocx(ctx context.Context, userID int, sessionID int64, params json.RawMessage) (string, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(params, &m); err != nil {
-		return "", fmt.Errorf("parameters build_docx: %w", err)
+		return "", fmt.Errorf("параметры build_docx: %w", err)
 	}
 
 	spec, err := mustStringField(m, "spec_json")
@@ -975,7 +981,7 @@ func (c *ChatUseCase) toolBuildDocx(ctx context.Context, userID int, sessionID i
 func (c *ChatUseCase) toolPutSessionFile(ctx context.Context, userID int, sessionID int64, params json.RawMessage) (string, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(params, &m); err != nil {
-		return "", fmt.Errorf("parameters put_session_file: %w", err)
+		return "", fmt.Errorf("параметры put_session_file: %w", err)
 	}
 
 	fname, err := mustStringField(m, "filename")
@@ -1030,7 +1036,7 @@ func (c *ChatUseCase) toolPutSessionFile(ctx context.Context, userID int, sessio
 func (c *ChatUseCase) toolApplyMarkdownPatch(ctx context.Context, userID int, sessionID int64, params json.RawMessage) (string, error) {
 	var m map[string]json.RawMessage
 	if err := json.Unmarshal(params, &m); err != nil {
-		return "", fmt.Errorf("parameters apply_markdown_patch: %w", err)
+		return "", fmt.Errorf("параметры apply_markdown_patch: %w", err)
 	}
 
 	patch, err := mustStringField(m, "patch_json")

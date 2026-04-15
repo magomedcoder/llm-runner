@@ -3,13 +3,16 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/magomedcoder/gen/internal/config"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/magomedcoder/gen/internal/app/di"
+	"github.com/magomedcoder/gen/internal/config"
+	"github.com/magomedcoder/gen/internal/mcpclient"
 	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc"
 )
@@ -55,6 +58,23 @@ func run(ctx context.Context, cfgPath string) error {
 	}
 
 	logger.I("Сервер запущен на %s", addr)
+
+	if metricsAddr := strings.TrimSpace(cfg.Server.MetricsListenAddr); metricsAddr != "" {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/metrics", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
+			if err := mcpclient.WritePrometheusMetrics(w); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
+		})
+
+		go func() {
+			logger.I("HTTP метрики MCP (Prometheus text): http://%s/metrics", metricsAddr)
+			if err := http.ListenAndServe(metricsAddr, mux); err != nil {
+				logger.W("metrics ListenAndServe: %v", err)
+			}
+		}()
+	}
 
 	errCh := make(chan error, 1)
 	go func() {

@@ -222,6 +222,16 @@ func (r *mcpServerRepository) DeleteOwned(ctx context.Context, id int64, ownerUs
 	return nil
 }
 
+func (r *mcpServerRepository) CountOwnedByUser(ctx context.Context, userID int) (int64, error) {
+	var n int64
+	err := r.db.WithContext(ctx).Model(&model.MCPServer{}).Where("user_id = ?", userID).Count(&n).Error
+	if err != nil {
+		return 0, err
+	}
+
+	return n, nil
+}
+
 func normalizeMCPTransport(t string) string {
 	t = strings.ToLower(strings.TrimSpace(t))
 	switch t {

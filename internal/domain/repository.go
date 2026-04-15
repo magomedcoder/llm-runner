@@ -123,6 +123,8 @@ type DocumentRAGRepository interface {
 	DeleteIndexForFile(ctx context.Context, fileID int64) error
 
 	SearchSessionTopK(ctx context.Context, sessionID int64, userID int, embeddingModel string, queryEmbedding []float32, topK int, fileID *int64) ([]ScoredDocumentRAGChunk, error)
+
+	GetChunksByFileChunkIndices(ctx context.Context, sessionID int64, userID int, fileID int64, embeddingModel string, chunkIndices []int) ([]DocumentRAGChunk, error)
 }
 
 type EditorHistoryRepository interface {
@@ -251,6 +253,8 @@ type MCPServerRepository interface {
 	DeleteGlobal(ctx context.Context, id int64) error
 
 	DeleteOwned(ctx context.Context, id int64, ownerUserID int) error
+
+	CountOwnedByUser(ctx context.Context, userID int) (int64, error)
 }
 
 type RunnerRepository interface {

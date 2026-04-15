@@ -603,7 +603,7 @@ func (h *RunnerHandler) CreateMCPServer(ctx context.Context, req *runnerpb.Creat
 		return nil, err
 	}
 
-	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+	if err := h.cfg.ValidateMCPServer(d); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -613,6 +613,12 @@ func (h *RunnerHandler) CreateMCPServer(ctx context.Context, req *runnerpb.Creat
 	}
 
 	h.mcpToolsListCache.InvalidateServerID(s.ID)
+
+	if u, err := GetUserFromContext(ctx, h.authUseCase); err == nil && u != nil {
+		logMCPServerStdioAudit("create", s, u.Id)
+	} else {
+		logMCPServerStdioAudit("create", s, 0)
+	}
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -681,7 +687,7 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 		TimeoutSeconds: req.GetTimeoutSeconds(),
 	}
 
-	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+	if err := h.cfg.ValidateMCPServer(d); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -699,6 +705,12 @@ func (h *RunnerHandler) UpdateMCPServer(ctx context.Context, req *runnerpb.Updat
 	}
 
 	h.mcpToolsListCache.InvalidateServerID(req.GetId())
+
+	if u, err := GetUserFromContext(ctx, h.authUseCase); err == nil && u != nil {
+		logMCPServerStdioAudit("update", s, u.Id)
+	} else {
+		logMCPServerStdioAudit("update", s, 0)
+	}
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -794,8 +806,20 @@ func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.C
 		return nil, err
 	}
 
-	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+	if err := h.cfg.ValidateMCPServer(d); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
+	}
+
+	if max := h.cfg.MCP.MaxMCPServersPerUser; max > 0 {
+		n, err := h.mcpServersUC.CountOwnedByUser(ctx, user.Id)
+		if err != nil {
+			return nil, ToStatusError(codes.Internal, err)
+		}
+
+		if n >= int64(max) {
+			return nil, status.Errorf(codes.ResourceExhausted,
+				"достигнут лимит личных MCP-серверов (%d); удалите сервер или увеличьте mcp.max_mcp_servers_per_user", max)
+		}
 	}
 
 	s, err := h.mcpServersUC.CreateOwned(ctx, d, user.Id)
@@ -804,6 +828,7 @@ func (h *RunnerHandler) CreateUserMCPServer(ctx context.Context, req *runnerpb.C
 	}
 
 	h.mcpToolsListCache.InvalidateServerID(s.ID)
+	logMCPServerStdioAudit("create", s, user.Id)
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -878,7 +903,7 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 		TimeoutSeconds: req.GetTimeoutSeconds(),
 	}
 
-	if err := h.cfg.ValidateMCPServerHTTP(d); err != nil {
+	if err := h.cfg.ValidateMCPServer(d); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
 
@@ -896,6 +921,7 @@ func (h *RunnerHandler) UpdateUserMCPServer(ctx context.Context, req *runnerpb.U
 	}
 
 	h.mcpToolsListCache.InvalidateServerID(req.GetId())
+	logMCPServerStdioAudit("update", s, user.Id)
 
 	return mapDomainMCPServerToProto(s), nil
 }
@@ -945,7 +971,7 @@ func (h *RunnerHandler) probeMCPServerToResult(ctx context.Context, s *domain.MC
 	if !s.Enabled {
 		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: "сервер отключён"}
 	}
-	if err := h.cfg.ValidateMCPServerHTTP(s); err != nil {
+	if err := h.cfg.ValidateMCPServer(s); err != nil {
 		return &runnerpb.MCPProbeResult{Ok: false, ErrorMessage: err.Error()}
 	}
 	pr, err := mcpclient.ProbeServer(ctx, s, h.mcpToolsListCache)

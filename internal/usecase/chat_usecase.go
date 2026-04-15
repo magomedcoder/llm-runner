@@ -31,13 +31,14 @@ const maxFileExtractedTextCacheBytes = 2 << 20
 const (
 	defaultFileRAGTopK            = 5
 	maxFileRAGTopK                = 32
-	maxFileRAGContextRunesCeiling = 12_000
+	maxFileRAGContextRunesCeiling = document.MaxEmbeddedAttachmentTextRunes
 )
 
 type SendMessageFileRAGOptions struct {
-	UseFileRAG bool
-	TopK       int
-	EmbedModel string
+	UseFileRAG        bool
+	TopK              int
+	EmbedModel        string
+	ForceVectorSearch bool
 }
 
 func forwardLLMStreamChunks(
@@ -122,6 +123,14 @@ type ChatUseCase struct {
 	ragBackgroundIndexTimeout    time.Duration
 	llmContextFallbackTokens     int
 	ragMaxExtractedRunesOnUpload int
+	ragNeighborChunkWindow       int
+	preferFullDocumentWhenFits   bool
+	deepRAGEnabled               bool
+	deepRAGMaxMapCalls           int
+	deepRAGChunksPerMap          int
+	deepRAGMapMaxTokens          int32
+	deepRAGMapTimeoutSeconds     int32
+	deepRAGMaxMapOutputRunes     int
 }
 
 func NewChatUseCase(
@@ -146,6 +155,14 @@ func NewChatUseCase(
 	ragBackgroundIndexTimeout time.Duration,
 	llmContextFallbackTokens int,
 	ragMaxExtractedRunesOnUpload int,
+	ragNeighborChunkWindow int,
+	preferFullDocumentWhenFits bool,
+	deepRAGEnabled bool,
+	deepRAGMaxMapCalls int,
+	deepRAGChunksPerMap int,
+	deepRAGMapMaxTokens int32,
+	deepRAGMapTimeoutSeconds int32,
+	deepRAGMaxMapOutputRunes int,
 ) *ChatUseCase {
 	if ragBackgroundIndexTimeout <= 0 {
 		ragBackgroundIndexTimeout = 30 * time.Minute
@@ -172,6 +189,14 @@ func NewChatUseCase(
 		ragBackgroundIndexTimeout:    ragBackgroundIndexTimeout,
 		llmContextFallbackTokens:     llmContextFallbackTokens,
 		ragMaxExtractedRunesOnUpload: ragMaxExtractedRunesOnUpload,
+		ragNeighborChunkWindow:       ragNeighborChunkWindow,
+		preferFullDocumentWhenFits:   preferFullDocumentWhenFits,
+		deepRAGEnabled:               deepRAGEnabled,
+		deepRAGMaxMapCalls:           deepRAGMaxMapCalls,
+		deepRAGChunksPerMap:          deepRAGChunksPerMap,
+		deepRAGMapMaxTokens:          deepRAGMapMaxTokens,
+		deepRAGMapTimeoutSeconds:     deepRAGMapTimeoutSeconds,
+		deepRAGMaxMapOutputRunes:     deepRAGMaxMapOutputRunes,
 		attachmentHydrateParallelism: normalizeAttachmentHydrateParallelism(attachmentHydrateParallelism),
 	}
 }
@@ -366,7 +391,7 @@ func (c *ChatUseCase) maybeInjectMCPTools(ctx context.Context, genParams *domain
 
 		declared, err := c.mcpToolsListCache.ListToolsCached(ctx, srv, mcpclient.DefaultToolsListCacheTTL)
 		if err != nil {
-			logger.W("MCP: tools/list id=%d: %v", sid, err)
+			logger.W("MCP: список инструментов id=%d: %v", sid, err)
 			continue
 		}
 
@@ -450,9 +475,9 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 		out, err := mcpclient.CallTool(toolCtx, srv, mcpToolName, params, c.mcpToolsListCache)
 		d := time.Since(t0)
 		if err != nil {
-			logger.W("MCP tools/call: session=%d server_id=%d tool=%q duration=%s err=%v", sessionID, serverID, mcpToolName, d, err)
+			logger.W("MCP: вызов инструмента сессия=%d server_id=%d инструмент=%q длительность=%s ошибка=%v", sessionID, serverID, mcpToolName, d, err)
 		} else {
-			logger.I("MCP tools/call: session=%d server_id=%d tool=%q duration=%s", sessionID, serverID, mcpToolName, d)
+			logger.I("MCP: вызов инструмента сессия=%d server_id=%d инструмент=%q длительность=%s", sessionID, serverID, mcpToolName, d)
 		}
 
 		return out, err
@@ -460,7 +485,7 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 }
 
 func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, userMessage string, attachmentFileID *int64, fileRAG *SendMessageFileRAGOptions) (chan ChatStreamChunk, error) {
-	logger.D("SendMessage: session=%d user=%d", sessionId, userId)
+	logger.D("SendMessage: сессия=%d пользователь=%d", sessionId, userId)
 	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
 	if err != nil {
 		logger.W("SendMessage: сессия не принадлежит пользователю: %v", err)
@@ -507,6 +532,9 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	messagesForLLM := make([]*domain.Message, 0, len(messages)+2)
 	messagesForLLM = append(messagesForLLM, c.llmChatSystemMessage(ctx, sessionId, settings, userId))
 	messagesForLLM = append(messagesForLLM, messages...)
+
+	var ragStream *ragStreamMeta
+
 	if len(attachmentContent) > 0 && attachmentName != "" {
 		userMsgForLLM := *userMsg
 		if document.IsImageAttachment(attachmentName) {
@@ -514,59 +542,111 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			userMsgForLLM.AttachmentName = attachmentName
 			userMsgForLLM.AttachmentContent = attachmentContent
 		} else if fileRAG != nil && fileRAG.UseFileRAG {
-			if c.documentIngest == nil {
-				return nil, domain.ErrRAGNotConfigured
-			}
-
 			fid := *storedAttachmentFileID
-			idx, err := c.documentIngest.GetIngestionStatus(ctx, userId, sessionId, fid)
+
+			extracted, err := document.ExtractText(attachmentName, attachmentContent)
 			if err != nil {
 				return nil, err
 			}
 
-			if idx != nil && idx.Status == domain.FileRAGIndexStatusFailed {
-				msg := strings.TrimSpace(idx.LastError)
-				if msg == "" {
-					msg = "см. журнал сервера"
+			useFullText := c.preferFullDocumentWhenFits && !fileRAG.ForceVectorSearch
+
+			if useFullText {
+				built, err := buildExpandedAttachmentMessage(attachmentName, extracted, userMessage)
+				if err != nil {
+					return nil, err
 				}
 
-				return nil, fmt.Errorf("%w: %s", domain.ErrRAGIndexFailed, msg)
-			}
+				userMsgForLLM.Content = built
+				ragBudget := c.effectiveMaxRAGContextRunes(messagesForLLM, userMessage)
+				logger.I("ChatUseCase: SendMessage сессия=%d файл=%d RAG=полный_документ символов_промпта=%d бюджет_RAG_симв=%d символов_извлечено=%d символов_запроса=%d полный_док_предпочтительно=%v принудительно_вектор=%v", sessionId, fid, utf8.RuneCountInString(built), ragBudget, utf8.RuneCountInString(extracted), utf8.RuneCountInString(strings.TrimSpace(userMessage)), c.preferFullDocumentWhenFits, fileRAG.ForceVectorSearch)
 
-			if idx == nil || idx.Status != domain.FileRAGIndexStatusReady {
-				st := "нет записи"
-				if idx != nil {
-					st = idx.Status
+				if rm, err := buildRAGStreamMetaFullDocument(fid, extracted); err != nil {
+					logger.W("ChatUseCase: метаданные стрима RAG: %v", err)
+				} else {
+					ragStream = rm
+				}
+			} else {
+				if c.documentIngest == nil {
+					return nil, domain.ErrRAGNotConfigured
 				}
 
-				return nil, fmt.Errorf("%w: статус=%s", domain.ErrRAGIndexNotReady, st)
-			}
+				idx, err := c.documentIngest.GetIngestionStatus(ctx, userId, sessionId, fid)
+				if err != nil {
+					return nil, err
+				}
 
-			topK := fileRAG.TopK
-			if topK <= 0 {
-				topK = defaultFileRAGTopK
-			}
+				if idx != nil && idx.Status == domain.FileRAGIndexStatusFailed {
+					msg := strings.TrimSpace(idx.LastError)
+					if msg == "" {
+						msg = "см. журнал сервера"
+					}
 
-			if topK > maxFileRAGTopK {
-				topK = maxFileRAGTopK
-			}
+					return nil, fmt.Errorf("%w: %s", domain.ErrRAGIndexFailed, msg)
+				}
 
-			query := strings.TrimSpace(userMessage)
-			if query == "" {
-				query = "Ответь по содержимому прикреплённого документа."
-			}
+				if idx == nil || idx.Status != domain.FileRAGIndexStatusReady {
+					st := "нет записи"
+					if idx != nil {
+						st = idx.Status
+					}
 
-			scored, err := c.documentIngest.SearchSessionKnowledge(ctx, userId, sessionId, fileRAG.EmbedModel, query, topK, &fid)
-			if err != nil {
-				return nil, err
-			}
+					return nil, fmt.Errorf("%w: статус=%s", domain.ErrRAGIndexNotReady, st)
+				}
 
-			if len(scored) == 0 {
-				return nil, domain.ErrRAGNoHits
-			}
+				topK := fileRAG.TopK
+				if topK <= 0 {
+					topK = defaultFileRAGTopK
+				}
 
-			ragRunes := c.effectiveMaxRAGContextRunes(messagesForLLM, userMessage)
-			userMsgForLLM.Content = buildMessageWithRAG(attachmentName, userMessage, scored, ragRunes)
+				if topK > maxFileRAGTopK {
+					topK = maxFileRAGTopK
+				}
+
+				query := strings.TrimSpace(userMessage)
+				if query == "" {
+					query = "Ответь по содержимому прикреплённого документа."
+				}
+
+				scored, err := c.documentIngest.SearchSessionKnowledge(ctx, userId, sessionId, fileRAG.EmbedModel, query, topK, &fid, c.ragNeighborChunkWindow)
+				if err != nil {
+					return nil, err
+				}
+
+				if len(scored) == 0 {
+					return nil, domain.ErrRAGNoHits
+				}
+
+				ragRunes := c.effectiveMaxRAGContextRunes(messagesForLLM, userMessage)
+				var deepSummary string
+				var deepMapCalls int
+				if c.deepRAGEnabled {
+					ds, nMap, dms, derr := c.deepRAGMapSummaries(ctx, sessionId, query, scored, resolvedModel)
+					deepMapCalls = nMap
+					if derr != nil {
+						logger.W("ChatUseCase: deep_rag: %v", derr)
+					} else if nMap > 0 {
+						deepSummary = ds
+						logger.I("ChatUseCase: deep_rag вызовов_map=%d длительность_мс=%d символов_вывода=%d", nMap, dms, utf8.RuneCountInString(ds))
+					}
+				}
+
+				userMsgForLLM.Content = buildMessageWithRAG(attachmentName, userMessage, scored, ragRunes, deepSummary)
+				if rm, err := buildRAGStreamMetaVector(fid, topK, c.ragNeighborChunkWindow, scored, deepMapCalls, strings.TrimSpace(deepSummary) != ""); err != nil {
+					logger.W("ChatUseCase: метаданные стрима RAG: %v", err)
+				} else {
+					ragStream = rm
+				}
+
+				var nDirectHits int
+				for _, sc := range scored {
+					if sc.Score > ragNeighborOnlyChunkScore/10 {
+						nDirectHits++
+					}
+				}
+
+				logger.I("ChatUseCase: SendMessage сессия=%d файл=%d RAG=векторный top_k=%d окно_соседей=%d чанков=%d прямых_попаданий=%d контекст_соседей=%d бюджет_RAG_симв=%d символов_промпта=%d символов_запроса=%d полный_док_предпочтительно=%v принудительно_вектор=%v", sessionId, fid, topK, c.ragNeighborChunkWindow, len(scored), nDirectHits, len(scored)-nDirectHits, ragRunes, utf8.RuneCountInString(userMsgForLLM.Content), utf8.RuneCountInString(query), c.preferFullDocumentWhenFits, fileRAG.ForceVectorSearch)
+			}
 		} else {
 			built, err := buildMessageWithFile(attachmentName, attachmentContent, userMessage)
 			if err != nil {
@@ -592,7 +672,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	messagesForLLM, historyNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, runnerAddr, true)
 
 	if genParams != nil && len(genParams.Tools) > 0 {
-		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyNotice)
+		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyNotice, ragStream)
 	}
 
 	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
@@ -607,7 +687,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 		logger.E("SendMessage: вызов LLM: %v", err)
 		return nil, err
 	}
-	logger.V("SendMessage: стрим от LLM запущен session=%d", sessionId)
+	logger.V("SendMessage: стрим от LLM запущен сессия=%d", sessionId)
 
 	var fullResponse strings.Builder
 	clientChan := make(chan ChatStreamChunk, 100)
@@ -616,6 +696,14 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			_ = c.messageRepo.UpdateContent(context.Background(), messageID, fullResponse.String())
 		}()
 		defer close(clientChan)
+
+		if ragStream != nil {
+			select {
+			case <-ctx.Done():
+				return
+			case clientChan <- ragStream.asChunk():
+			}
+		}
 
 		if historyNotice {
 			select {
@@ -632,7 +720,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 }
 
 func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId int, sessionId int64, assistantMessageID int64) (chan ChatStreamChunk, error) {
-	logger.D("RegenerateAssistantResponse: session=%d user=%d assistantMsg=%d", sessionId, userId, assistantMessageID)
+	logger.D("RegenerateAssistantResponse: сессия=%d пользователь=%d сообщение_ассистента=%d", sessionId, userId, assistantMessageID)
 	if assistantMessageID <= 0 {
 		return nil, fmt.Errorf("некорректный assistant_message_id")
 	}
@@ -662,7 +750,7 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 
 	maxID, err := c.messageRepo.MaxMessageIDInSession(ctx, sessionId)
 	if err != nil {
-		logger.E("RegenerateAssistantResponse: max id: %v", err)
+		logger.E("RegenerateAssistantResponse: макс. id сообщения: %v", err)
 		return nil, err
 	}
 	if maxID != assistantMessageID {
@@ -743,7 +831,7 @@ func (c *ChatUseCase) RegenerateAssistantResponse(ctx context.Context, userId in
 }
 
 func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int, sessionId int64, assistantMessageID int64) (chan ChatStreamChunk, error) {
-	logger.D("ContinueAssistantResponse: session=%d user=%d assistantMsg=%d", sessionId, userId, assistantMessageID)
+	logger.D("ContinueAssistantResponse: сессия=%d пользователь=%d сообщение_ассистента=%d", sessionId, userId, assistantMessageID)
 	if assistantMessageID <= 0 {
 		return nil, fmt.Errorf("некорректный assistant_message_id")
 	}
@@ -776,7 +864,7 @@ func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int,
 
 	maxID, err := c.messageRepo.MaxMessageIDInSession(ctx, sessionId)
 	if err != nil {
-		logger.E("ContinueAssistantResponse: max id: %v", err)
+		logger.E("ContinueAssistantResponse: макс. id сообщения: %v", err)
 		return nil, err
 	}
 	if maxID != assistantMessageID {
@@ -846,7 +934,7 @@ func (c *ChatUseCase) ContinueAssistantResponse(ctx context.Context, userId int,
 }
 
 func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int, sessionId int64, userMessageID int64, newContent string) (chan ChatStreamChunk, error) {
-	logger.D("EditUserMessageAndContinue: session=%d user=%d userMsg=%d", sessionId, userId, userMessageID)
+	logger.D("EditUserMessageAndContinue: сессия=%d пользователь=%d сообщение_пользователя=%d", sessionId, userId, userMessageID)
 	if userMessageID <= 0 {
 		return nil, fmt.Errorf("некорректный user_message_id")
 	}
@@ -928,7 +1016,7 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	messagesForLLM, editHistoryNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, runnerAddr, true)
 
 	if genParams != nil && len(genParams.Tools) > 0 {
-		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, editHistoryNotice)
+		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, editHistoryNotice, nil)
 	}
 
 	assistantMsg := domain.NewMessage(sessionId, "", domain.MessageRoleAssistant)
@@ -1630,13 +1718,13 @@ func (c *ChatUseCase) capLLMHistoryTokens(ctx context.Context, msgs []*domain.Me
 		summarizeDropped = c.runnerReg.AggregateChatHints().LLMHistorySummarizeDropped
 	}
 
-	logger.I("ChatUseCase: session=%d промпт усечён по оценке токенов (~лимит %d): сообщений %d -> %d", sessionID, maxTok, len(msgs), len(out))
+	logger.I("ChatUseCase: сессия=%d промпт усечён по оценке токенов (~лимит %d): сообщений %d -> %d", sessionID, maxTok, len(msgs), len(out))
 	if allowSummarize && summarizeDropped && len(dropped) > 0 {
 		if sum := strings.TrimSpace(c.summarizeDroppedMessages(ctx, sessionID, resolvedModel, chatRunnerAddr, dropped)); sum != "" {
 			out = injectSummaryAfterSystem(out, sum)
 			out2, trimmedAgain, _ := trimLLMMessagesByApproxTokensWithDropped(out, maxTok, tailPreserve)
 			if trimmedAgain {
-				logger.W("ChatUseCase: session=%d после вставки резюме снова усечено: %d -> %d сообщений",
+				logger.W("ChatUseCase: сессия=%d после вставки резюме снова усечено: %d -> %d сообщений",
 					sessionID, len(out), len(out2))
 			}
 			out = out2
@@ -1670,6 +1758,26 @@ func filterHistoryForLLM(messages []*domain.Message) []*domain.Message {
 const documentAttachmentInstruction = "Ниже - текст вложенного документа. Отвечай, опираясь на него; при необходимости приводи короткие цитаты."
 const documentTruncatedNotice = "Внимание: из-за ограничения длины контекста показана только начальная часть файла."
 
+func buildExpandedAttachmentMessage(attachmentName, extractedText, userMessage string) (string, error) {
+	fileContent, truncated := document.TruncateExtractedText(extractedText, 0)
+
+	var b strings.Builder
+	b.WriteString(documentAttachmentInstruction)
+	b.WriteString("\n\n")
+	if truncated {
+		b.WriteString(documentTruncatedNotice)
+		b.WriteString("\n\n")
+	}
+
+	b.WriteString(fmt.Sprintf("Файл «%s»:\n\n```\n%s\n```", attachmentName, fileContent))
+	if userMessage != "" {
+		b.WriteString("\n\n---\n\n")
+		b.WriteString(userMessage)
+	}
+
+	return b.String(), nil
+}
+
 func buildMessageWithFile(attachmentName string, attachmentContent []byte, userMessage string) (string, error) {
 	extracted, err := document.ExtractText(attachmentName, attachmentContent)
 	if err != nil {
@@ -1680,16 +1788,93 @@ func buildMessageWithFile(attachmentName string, attachmentContent []byte, userM
 	return buildExpandedAttachmentMessage(attachmentName, extracted, userMessage)
 }
 
-func buildMessageWithRAG(fileName string, userMessage string, scored []domain.ScoredDocumentRAGChunk, maxContextRunes int) string {
+func ragFragmentHeadingSuffix(meta map[string]any) string {
+	if meta == nil {
+		return ""
+	}
+
+	hp, _ := meta["heading_path"].(string)
+	hp = strings.TrimSpace(hp)
+	if hp == "" {
+		return ""
+	}
+
+	return ", раздел=«" + hp + "»"
+}
+
+func intFromMeta(meta map[string]any, key string) (int, bool) {
+	if meta == nil {
+		return 0, false
+	}
+
+	v, ok := meta[key]
+	if !ok || v == nil {
+		return 0, false
+	}
+
+	switch x := v.(type) {
+	case int:
+		return x, true
+	case int32:
+		return int(x), true
+	case int64:
+		return int(x), true
+	case float64:
+		return int(x), true
+	default:
+		return 0, false
+	}
+}
+
+func ragFragmentPDFSuffix(meta map[string]any) string {
+	ps, ok1 := intFromMeta(meta, "pdf_page_start")
+	pe, ok2 := intFromMeta(meta, "pdf_page_end")
+	if !ok1 || !ok2 || ps <= 0 || pe < ps {
+		return ""
+	}
+
+	if ps == pe {
+		return ", стр.=" + strconv.Itoa(ps)
+	}
+
+	return ", стр.=" + strconv.Itoa(ps) + "–" + strconv.Itoa(pe)
+}
+
+func buildMessageWithRAG(fileName string, userMessage string, scored []domain.ScoredDocumentRAGChunk, maxContextRunes int, deepMapSummary string) string {
 	if maxContextRunes < 200 {
 		maxContextRunes = 200
 	}
 
 	var b strings.Builder
-	b.WriteString("Ниже — наиболее релевантные фрагменты из документа (векторный поиск по запросу). Опирайся на них при ответе; при цитировании указывай номер фрагмента.\n\n")
-	total := 0
+	intro := "Ниже - наиболее релевантные фрагменты из документа (векторный поиск по запросу). Опирайся на них при ответе; при цитировании указывай номер фрагмента.\n\n"
+	b.WriteString(intro)
+	total := utf8.RuneCountInString(intro)
+
+	if s := strings.TrimSpace(deepMapSummary); s != "" {
+		block := "Промежуточное сжатие фрагментов (map-шаг, дополнительно к полным цитатам ниже):\n\n" + s + "\n\n---\n\n"
+		br := utf8.RuneCountInString(block)
+		if total+br > maxContextRunes {
+			room := maxContextRunes - total - 120
+			if room < 80 {
+				room = 80
+			}
+			block = truncateStringRunes(block, room) + "\n\n---\n\n"
+			br = utf8.RuneCountInString(block)
+		}
+
+		b.WriteString(block)
+		total += br
+	}
+
 	for i, sc := range scored {
-		header := fmt.Sprintf("--- Фрагмент %d (близость=%.3f, chunk_index=%d) ---\n", i+1, sc.Score, sc.DocumentRAGChunk.ChunkIndex)
+		sfx := ragFragmentHeadingSuffix(sc.Metadata) + ragFragmentPDFSuffix(sc.Metadata)
+		var header string
+		if sc.Score <= ragNeighborOnlyChunkScore/10 {
+			header = fmt.Sprintf("--- Фрагмент %d (соседний контекст, chunk_index=%d%s) ---\n", i+1, sc.DocumentRAGChunk.ChunkIndex, sfx)
+		} else {
+			header = fmt.Sprintf("--- Фрагмент %d (близость=%.3f, chunk_index=%d%s) ---\n", i+1, sc.Score, sc.DocumentRAGChunk.ChunkIndex, sfx)
+		}
+
 		body := sc.DocumentRAGChunk.Text
 		piece := header + body + "\n\n"
 		r := utf8.RuneCountInString(piece)
@@ -1719,26 +1904,6 @@ func buildMessageWithRAG(fileName string, userMessage string, scored []domain.Sc
 	b.WriteString(strings.TrimSpace(userMessage))
 
 	return b.String()
-}
-
-func buildExpandedAttachmentMessage(attachmentName, extractedText, userMessage string) (string, error) {
-	fileContent, truncated := document.TruncateExtractedText(extractedText, document.MaxEmbeddedAttachmentTextRunes)
-
-	var b strings.Builder
-	b.WriteString(documentAttachmentInstruction)
-	b.WriteString("\n\n")
-	if truncated {
-		b.WriteString(documentTruncatedNotice)
-		b.WriteString("\n\n")
-	}
-
-	b.WriteString(fmt.Sprintf("Файл «%s»:\n\n```\n%s\n```", attachmentName, fileContent))
-	if userMessage != "" {
-		b.WriteString("\n\n---\n\n")
-		b.WriteString(userMessage)
-	}
-
-	return b.String(), nil
 }
 
 func (c *ChatUseCase) PutSessionFile(ctx context.Context, userID int, sessionID int64, filename string, content []byte, ttlSeconds int32) (int64, error) {

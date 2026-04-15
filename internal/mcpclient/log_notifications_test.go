@@ -6,7 +6,7 @@ import (
 )
 
 func TestRedactMCPLogMessagePayloadBearer(t *testing.T) {
-	in := `Authorization: Bearer 11`
+	in := `Authorization: Bearer 1234567890abcdef`
 	got := redactMCPLogMessagePayload(in)
 	if strings.Contains(got, "eyJ") {
 		t.Fatalf("token leaked: %q", got)

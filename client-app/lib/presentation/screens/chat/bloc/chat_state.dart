@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:gen/domain/entities/chat_session_settings.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/rag_document_preview.dart';
 import 'package:gen/domain/entities/rag_ingestion_ui.dart';
 import 'package:gen/domain/entities/session.dart';
 import 'package:gen/domain/entities/assistant_message_regeneration.dart';
@@ -9,6 +10,7 @@ import 'package:gen/domain/entities/user_message_edit.dart';
 const _kKeepCurrentSessionId = Symbol('_kKeepCurrentSessionId');
 const _kKeepToolProgress = Object();
 const _kKeepStreamNotice = Object();
+const _kKeepRagDocumentPreview = Object();
 const _kKeepRagIngestionUi = Object();
 
 class ChatState extends Equatable {
@@ -26,6 +28,7 @@ class ChatState extends Equatable {
   final String? toolProgressLabel;
   final String? error;
   final String? streamNotice;
+  final RagDocumentPreview? ragDocumentPreview;
   final List<String> runners;
   final Map<String, String> runnerNames;
   final String? selectedRunner;
@@ -56,13 +59,15 @@ class ChatState extends Equatable {
   final bool draftMcpEnabled;
   final List<int> draftMcpServerIds;
   final RagIngestionUi? ragIngestionUi;
+  final Map<String, RagDocumentPreview> ragPreviewBySessionFile;
 
   bool get isStreamingInCurrentSession =>
       isStreaming &&
       streamingSessionId != null &&
       currentSessionId == streamingSessionId;
 
-  bool get isEmptyChatComposer => messages.isEmpty && !isStreamingInCurrentSession;
+  bool get isEmptyChatComposer =>
+      messages.isEmpty && !isStreamingInCurrentSession;
 
   const ChatState({
     this.isConnected = false,
@@ -79,6 +84,7 @@ class ChatState extends Equatable {
     this.toolProgressLabel,
     this.error,
     this.streamNotice,
+    this.ragDocumentPreview,
     this.runners = const [],
     this.runnerNames = const {},
     this.selectedRunner,
@@ -109,6 +115,7 @@ class ChatState extends Equatable {
     this.draftMcpEnabled = false,
     this.draftMcpServerIds = const [],
     this.ragIngestionUi,
+    this.ragPreviewBySessionFile = const {},
   });
 
   ChatState copyWith({
@@ -129,6 +136,8 @@ class ChatState extends Equatable {
     String? error,
     Object? streamNotice = _kKeepStreamNotice,
     bool clearStreamNotice = false,
+    Object? ragDocumentPreview = _kKeepRagDocumentPreview,
+    bool clearRagDocumentPreview = false,
     List<String>? runners,
     Map<String, String>? runnerNames,
     String? selectedRunner,
@@ -164,21 +173,23 @@ class ChatState extends Equatable {
     List<int>? draftMcpServerIds,
     Object? ragIngestionUi = _kKeepRagIngestionUi,
     bool clearRagIngestionUi = false,
+    Map<String, RagDocumentPreview>? ragPreviewBySessionFile,
   }) {
     return ChatState(
       isConnected: isConnected ?? this.isConnected,
-      hasCompletedInitialConnection: hasCompletedInitialConnection ?? this.hasCompletedInitialConnection,
+      hasCompletedInitialConnection:
+          hasCompletedInitialConnection ?? this.hasCompletedInitialConnection,
       isLoading: isLoading ?? this.isLoading,
       isStreaming: isStreaming ?? this.isStreaming,
       streamingSessionId: clearStreamingSessionId
-        ? null
-        : (streamingSessionId ?? this.streamingSessionId),
+          ? null
+          : (streamingSessionId ?? this.streamingSessionId),
       streamingParkedMessages: clearStreamingParked
-        ? null
-        : (streamingParkedMessages ?? this.streamingParkedMessages),
+          ? null
+          : (streamingParkedMessages ?? this.streamingParkedMessages),
       currentSessionId: identical(currentSessionId, _kKeepCurrentSessionId)
-        ? this.currentSessionId
-        : currentSessionId as int?,
+          ? this.currentSessionId
+          : currentSessionId as int?,
       sessions: sessions ?? this.sessions,
       messages: messages ?? this.messages,
       currentStreamingText: currentStreamingText,
@@ -186,46 +197,60 @@ class ChatState extends Equatable {
       toolProgressLabel: clearToolProgress
           ? null
           : (identical(toolProgressLabel, _kKeepToolProgress)
-              ? this.toolProgressLabel
-              : toolProgressLabel as String?),
+                ? this.toolProgressLabel
+                : toolProgressLabel as String?),
       error: error,
       streamNotice: clearStreamNotice
           ? null
           : (identical(streamNotice, _kKeepStreamNotice)
-              ? this.streamNotice
-              : streamNotice as String?),
+                ? this.streamNotice
+                : streamNotice as String?),
+      ragDocumentPreview: clearRagDocumentPreview
+          ? null
+          : (identical(ragDocumentPreview, _kKeepRagDocumentPreview)
+                ? this.ragDocumentPreview
+                : ragDocumentPreview as RagDocumentPreview?),
       runners: runners ?? this.runners,
       runnerNames: runnerNames ?? this.runnerNames,
       selectedRunner: selectedRunner ?? this.selectedRunner,
       hasActiveRunners: hasActiveRunners ?? this.hasActiveRunners,
-      runnersStatusRefreshing: runnersStatusRefreshing ?? this.runnersStatusRefreshing,
+      runnersStatusRefreshing:
+          runnersStatusRefreshing ?? this.runnersStatusRefreshing,
       selectedRunnerEnabled: clearSelectedRunnerHealth
-        ? null
-        : (selectedRunnerEnabled ?? this.selectedRunnerEnabled),
+          ? null
+          : (selectedRunnerEnabled ?? this.selectedRunnerEnabled),
       selectedRunnerConnected: clearSelectedRunnerHealth
-        ? null
-        : (selectedRunnerConnected ?? this.selectedRunnerConnected),
+          ? null
+          : (selectedRunnerConnected ?? this.selectedRunnerConnected),
       sessionSettings: sessionSettings ?? this.sessionSettings,
       retryText: clearRetryPayload ? null : (retryText ?? this.retryText),
       retryAttachmentFileName: clearRetryPayload
-        ? null
-        : (retryAttachmentFileName ?? this.retryAttachmentFileName),
+          ? null
+          : (retryAttachmentFileName ?? this.retryAttachmentFileName),
       retryAttachmentContent: clearRetryPayload
-        ? null
-        : (retryAttachmentContent ?? this.retryAttachmentContent),
+          ? null
+          : (retryAttachmentContent ?? this.retryAttachmentContent),
       retryAttachmentFileId: clearRetryPayload
-        ? null
-        : (retryAttachmentFileId ?? this.retryAttachmentFileId),
+          ? null
+          : (retryAttachmentFileId ?? this.retryAttachmentFileId),
       editedMessageIds: editedMessageIds ?? this.editedMessageIds,
       editsByMessageId: editsByMessageId ?? this.editsByMessageId,
-      editCursorByMessageId: editCursorByMessageId ?? this.editCursorByMessageId,
-      pendingEditNavDeltaByMessageId: pendingEditNavDeltaByMessageId ?? this.pendingEditNavDeltaByMessageId,
-      regeneratedAssistantMessageIds: regeneratedAssistantMessageIds ?? this.regeneratedAssistantMessageIds,
-      regenerationsByMessageId: regenerationsByMessageId ?? this.regenerationsByMessageId,
-      regenerationCursorByMessageId: regenerationCursorByMessageId ?? this.regenerationCursorByMessageId,
-      pendingRegenerationNavDeltaByMessageId: pendingRegenerationNavDeltaByMessageId ?? this.pendingRegenerationNavDeltaByMessageId,
+      editCursorByMessageId:
+          editCursorByMessageId ?? this.editCursorByMessageId,
+      pendingEditNavDeltaByMessageId:
+          pendingEditNavDeltaByMessageId ?? this.pendingEditNavDeltaByMessageId,
+      regeneratedAssistantMessageIds:
+          regeneratedAssistantMessageIds ?? this.regeneratedAssistantMessageIds,
+      regenerationsByMessageId:
+          regenerationsByMessageId ?? this.regenerationsByMessageId,
+      regenerationCursorByMessageId:
+          regenerationCursorByMessageId ?? this.regenerationCursorByMessageId,
+      pendingRegenerationNavDeltaByMessageId:
+          pendingRegenerationNavDeltaByMessageId ??
+          this.pendingRegenerationNavDeltaByMessageId,
       hasMoreOlderMessages: hasMoreOlderMessages ?? this.hasMoreOlderMessages,
-      isLoadingOlderMessages: isLoadingOlderMessages ?? this.isLoadingOlderMessages,
+      isLoadingOlderMessages:
+          isLoadingOlderMessages ?? this.isLoadingOlderMessages,
       partialAssistantMessageId: clearPartialAssistant
           ? null
           : (partialAssistantMessageId ?? this.partialAssistantMessageId),
@@ -242,8 +267,10 @@ class ChatState extends Equatable {
       ragIngestionUi: clearRagIngestionUi
           ? null
           : (identical(ragIngestionUi, _kKeepRagIngestionUi)
-              ? this.ragIngestionUi
-              : ragIngestionUi as RagIngestionUi?),
+                ? this.ragIngestionUi
+                : ragIngestionUi as RagIngestionUi?),
+      ragPreviewBySessionFile:
+          ragPreviewBySessionFile ?? this.ragPreviewBySessionFile,
     );
   }
 
@@ -263,6 +290,7 @@ class ChatState extends Equatable {
     toolProgressLabel,
     error,
     streamNotice,
+    ragDocumentPreview,
     runners,
     runnerNames,
     selectedRunner,
@@ -293,5 +321,6 @@ class ChatState extends Equatable {
     draftMcpEnabled,
     draftMcpServerIds,
     ragIngestionUi,
+    ragPreviewBySessionFile,
   ];
 }

@@ -6,6 +6,7 @@ import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_drop_overlay.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_input_bar.dart';
 import 'package:gen/presentation/screens/chat/widgets/chat_message_list.dart';
+import 'package:gen/presentation/screens/chat/widgets/rag_context_preview_banner.dart';
 import 'package:gen/presentation/screens/chat/widgets/rag_ingestion_status_banner.dart';
 
 class ChatMessagesPanel extends StatelessWidget {
@@ -20,6 +21,7 @@ class ChatMessagesPanel extends StatelessWidget {
     required this.onDragEntered,
     required this.onDragExited,
     required this.onDragDone,
+    required this.onDismissRagDocumentPreview,
   });
 
   final ChatState state;
@@ -31,6 +33,7 @@ class ChatMessagesPanel extends StatelessWidget {
   final void Function(DropEventDetails details) onDragEntered;
   final void Function(DropEventDetails details) onDragExited;
   final Future<void> Function(DropDoneDetails details) onDragDone;
+  final VoidCallback onDismissRagDocumentPreview;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +42,10 @@ class ChatMessagesPanel extends StatelessWidget {
     }
 
     if (immersiveEmptyChat) {
-      final maxComposer = math.min(720.0, MediaQuery.sizeOf(context).width - 32);
+      final maxComposer = math.min(
+        720.0,
+        MediaQuery.sizeOf(context).width - 32,
+      );
       return DropTarget(
         onDragEntered: canDropFile ? onDragEntered : null,
         onDragExited: canDropFile ? onDragExited : null,
@@ -52,10 +58,18 @@ class ChatMessagesPanel extends StatelessWidget {
               children: [
                 if (state.ragIngestionUi != null)
                   RagIngestionStatusBanner(ui: state.ragIngestionUi!),
+                if (state.ragDocumentPreview != null)
+                  RagContextPreviewBanner(
+                    preview: state.ragDocumentPreview!,
+                    onDismiss: onDismissRagDocumentPreview,
+                  ),
                 Expanded(
                   child: Center(
                     child: SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 24,
+                      ),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(maxWidth: maxComposer),
                         child: ChatInputBar(
@@ -92,6 +106,11 @@ class ChatMessagesPanel extends StatelessWidget {
               ),
               if (state.ragIngestionUi != null)
                 RagIngestionStatusBanner(ui: state.ragIngestionUi!),
+              if (state.ragDocumentPreview != null)
+                RagContextPreviewBanner(
+                  preview: state.ragDocumentPreview!,
+                  onDismiss: onDismissRagDocumentPreview,
+                ),
               ChatInputBar(key: inputBarKey, isEnabled: canDropFile),
             ],
           ),

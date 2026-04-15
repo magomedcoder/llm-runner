@@ -70,7 +70,10 @@ class _McpAdminScreenState extends State<McpAdminScreen> {
       if (!mounted) {
         return;
       }
-      showAppTopNotice('Проверка MCP: $e', error: true);
+      showAppTopNotice(
+        userSafeErrorMessage(e, fallback: 'Проверка MCP не удалась'),
+        error: true,
+      );
     }
   }
 

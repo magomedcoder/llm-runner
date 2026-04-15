@@ -72,3 +72,11 @@ func (u *MCPServersUseCase) DeleteGlobal(ctx context.Context, id int64) error {
 func (u *MCPServersUseCase) DeleteOwned(ctx context.Context, id int64, userID int) error {
 	return u.repo.DeleteOwned(ctx, id, userID)
 }
+
+func (u *MCPServersUseCase) CountOwnedByUser(ctx context.Context, userID int) (int64, error) {
+	if u.repo == nil {
+		return 0, nil
+	}
+
+	return u.repo.CountOwnedByUser(ctx, userID)
+}

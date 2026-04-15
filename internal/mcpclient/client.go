@@ -121,6 +121,10 @@ func transportFor(ctx context.Context, srv *domain.MCPServer) (mcp.Transport, er
 			return nil, errors.New("stdio: пустая команда")
 		}
 
+		if err := validateStdioPolicy(srv); err != nil {
+			return nil, err
+		}
+
 		args, err := parseStringSliceJSON(srv.ArgsJSON)
 		if err != nil {
 			return nil, fmt.Errorf("args_json: %w", err)
@@ -305,8 +309,19 @@ func listTools(ctx context.Context, srv *domain.MCPServer, notify *ToolsListCach
 }
 
 func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, arguments json.RawMessage, notify ...*ToolsListCache) (string, error) {
+	started := time.Now()
+	defer func() {
+		recordCallToolDuration(time.Since(started))
+	}()
+
+	serverID := int64(0)
+	if srv != nil {
+		serverID = srv.ID
+	}
+
 	if strings.TrimSpace(mcpToolName) == "" {
 		recordCallToolTransportErr()
+		recordCallToolServer(serverID, "transport_err")
 		return "", errors.New("пустое имя инструмента MCP")
 	}
 
@@ -347,14 +362,17 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 
 	if err != nil {
 		recordCallToolTransportErr()
+		recordCallToolServer(serverID, "transport_err")
 		return "", err
 	}
 
 	if callErr != nil {
 		recordCallToolMCPError()
+		recordCallToolServer(serverID, "mcp_error")
 		return result, callErr
 	}
 
 	recordCallToolOK()
+	recordCallToolServer(serverID, "ok")
 	return result, nil
 }

@@ -100,6 +100,10 @@ func (fakeMCPServerRepoForMCP) DeleteOwned(context.Context, int64, int) error {
 	return nil
 }
 
+func (fakeMCPServerRepoForMCP) CountOwnedByUser(context.Context, int) (int64, error) {
+	return 0, nil
+}
+
 func TestGenMcpMetaToolsMCPServerRepoNil(t *testing.T) {
 	ctx := context.Background()
 	c := &ChatUseCase{
@@ -262,7 +266,7 @@ func TestMaybeInjectMCPBuiltinMetaToolsNoInjectWhenDisabledOrEmpty(t *testing.T)
 		MCPServerIDs: []int64{1},
 	})
 	if len(gp.Tools) != 1 {
-		t.Fatalf("disabled: got %d tools", len(gp.Tools))
+		t.Fatalf("при отключённом MCP: получено %d инструментов", len(gp.Tools))
 	}
 
 	gp2 := &domain.GenerationParams{
@@ -273,7 +277,7 @@ func TestMaybeInjectMCPBuiltinMetaToolsNoInjectWhenDisabledOrEmpty(t *testing.T)
 		MCPServerIDs: nil,
 	})
 	if len(gp2.Tools) != 1 {
-		t.Fatalf("empty server ids: got %d tools", len(gp2.Tools))
+		t.Fatalf("пустые id серверов: получено %d инструментов", len(gp2.Tools))
 	}
 
 	gp3 := &domain.GenerationParams{Tools: append([]domain.Tool(nil), base...)}
@@ -283,7 +287,7 @@ func TestMaybeInjectMCPBuiltinMetaToolsNoInjectWhenDisabledOrEmpty(t *testing.T)
 		MCPServerIDs: []int64{1},
 	})
 	if len(gp3.Tools) != 1 {
-		t.Fatalf("nil repo: got %d tools", len(gp3.Tools))
+		t.Fatalf("nil-репозиторий: получено %d инструментов", len(gp3.Tools))
 	}
 }
 

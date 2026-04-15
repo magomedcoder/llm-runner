@@ -1,6 +1,7 @@
 server:
   host: "0.0.0.0"
   port: "50051"
+  # metrics_listen: "127.0.0.1:9090" # опционально: HTTP /metrics в формате Prometheus (счётчики MCP из mcpclient)
 
 log_level: "info"
 
@@ -19,18 +20,44 @@ jwt:
 
 data_dir: "./data"
 
-#mcp:
-#  http_allow_any: false
-#  http_allow_hosts:
-#     - "0.0.0.0"
+mcp:
+  http_allow_any: false
+  http_allow_hosts: [] # разрешённые имена хостов (и суффиксы *.host) для URL MCP; loopback не нужно дублировать
+  # stdio_disabled: true # раскомментируйте в продакшене, если используете только HTTP-транспорты
+  # stdio_command_prefixes: # непустой список = command должна быть под одним из префиксов пути (после Clean)
+  #  - "/opt/mcp-servers"
+  # max_mcp_servers_per_user: 20 # лимит личных MCP-серверов на пользователя; 0 = без лимита
+  # max_tracked_server_ids_for_call_stats: 2048 # лимит различных server_id в in-memory per-server метриках call_tool; 0 = без лимита
 
-# attachment_hydrate_parallelism: 16 # Параллельная подготовка вложений в истории для LLM (1...64). 0 = 8
+attachment_hydrate_parallelism: 64 # параллельная подготовка вложений в истории для LLM (1...64; 0 = 8).
 
 #rag:
-#  chunk_size_runes: 1024
-#  chunk_overlap_runes: 128
-#  embed_batch_size: 32 # размер запроса EmbedBatch, при OOM раннер сам дробится рекурсией
-#  max_chunk_embed_runes: 8192 # обрезка текста чанка перед эмбеддингом
-#  background_index_timeout_seconds: 1800 # фон после PutSessionFile, 0 = 30 мин
-#  llm_context_fallback_tokens: 4096 # если раннер не прислал max_context_tokens, gen подставляет 4096 для усечения истории/RAG, -1 = не подставлять
-#  max_extracted_runes_on_upload: 0 # опционально: отклонять PutSessionFile, если извлечённый текст длиннее (0 = без лимита)
+#  chunk_size_runes: 2048 # целевой размер чанка в рунах для индексации (≤0 в коде -> ragDefaultChunkSizeRunes)
+#  chunk_overlap_runes: 256 # перекрытие; <0 -> 0; 0 -> ragDefaultChunkOverlapRunes
+#  embed_batch_size: 64 # размер запроса EmbedBatch; при OOM раннер дробит рекурсией
+#  max_chunk_embed_runes: 16384 # обрезка текста чанка перед эмбеддингом (≤0 -> ragDefaultMaxChunkEmbedRunes)
+#  background_index_timeout_seconds: 7200 # фон после PutSessionFile (≤0 -> ragDefaultBackgroundIndexSeconds с)
+#  llm_context_fallback_tokens: 131072 # если раннер не прислал max_context_tokens - для усечения истории/RAG (<0 -> не подставлять)
+#  max_extracted_runes_on_upload: 0 # отклонять загрузку, если извлечённый текст длиннее (0 = без лимита)
+#  neighbor_chunk_window: 8 # <0 без соседей; 0 -> ragDefaultNeighborChunkWindow; макс. 8
+#  prefer_full_document_when_fits: true # nil/true: весь текст в промпт; false = только векторный RAG (если не force_vector)
+#  query_rewrite_enabled: true # nil/true по умолчанию; false в YAML отключает
+#  query_rewrite_max_tokens: 512 # лимит ответа переформулировки (16...512)
+#  query_rewrite_timeout_seconds: 300 # таймаут rewrite (1...300)
+#  hyde_enabled: true # nil/true по умолчанию
+#  hyde_max_tokens: 768 # (32...768)
+#  hyde_timeout_seconds: 300 # (1...300)
+#  adaptive_k_enabled: true # nil/true по умолчанию
+#  adaptive_k_multiplier: 6 # (1...6)
+#  min_similarity_score: -1 # порог cosine; ≤−1 или 0 в YAML -> фильтр выключен
+#  deep_rag_enabled: true # nil/true по умолчанию
+#  deep_rag_max_map_calls: 16 # (1...16)
+#  deep_rag_chunks_per_map: 12 # (1...12)
+#  deep_rag_map_max_tokens: 2048 # (64...2048)
+#  deep_rag_map_timeout_seconds: 600 # (1...600)
+#  deep_rag_max_map_output_runes: 50000 # (400...50000)
+#  rerank_enabled: true # nil/true по умолчанию
+#  rerank_max_candidates: 32 # (2...32)
+#  rerank_max_tokens: 1024 # (32...1024)
+#  rerank_timeout_seconds: 300 # (1...300)
+#  rerank_passage_max_runes: 4000 # (200...4000)

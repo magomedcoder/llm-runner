@@ -1,4 +1,4 @@
-.PHONY: install gen gen-proto run
+.PHONY: install gen gen-proto run test
 
 install:
 	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest \
@@ -29,3 +29,6 @@ gen-proto:
 
 run:
 	go run ./cmd/gen
+
+test:
+	go test ./... -race -count=1

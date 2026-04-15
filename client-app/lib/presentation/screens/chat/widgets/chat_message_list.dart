@@ -9,7 +9,11 @@ import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_state.dart';
 import 'package:gen/presentation/widgets/chat_bubble.dart';
 
-String _contentForVersion(Message msg, List<UserMessageEdit> edits, int versionIdx) {
+String _contentForVersion(
+  Message msg,
+  List<UserMessageEdit> edits,
+  int versionIdx,
+) {
   if (edits.isEmpty) {
     return msg.content;
   }
@@ -23,7 +27,11 @@ String _contentForVersion(Message msg, List<UserMessageEdit> edits, int versionI
   return edits[i].newContent;
 }
 
-String _assistantContentForVersion(Message msg, List<AssistantMessageRegeneration> regens, int versionIdx) {
+String _assistantContentForVersion(
+  Message msg,
+  List<AssistantMessageRegeneration> regens,
+  int versionIdx,
+) {
   if (regens.isEmpty) {
     return msg.content;
   }
@@ -56,9 +64,7 @@ class ChatMessageList extends StatelessWidget {
         vertical: 16,
         horizontal: horizontalPadding,
       ),
-      itemCount: state.messages.length +
-          (state.isStreamingInCurrentSession ? 1 : 0) +
-          (state.isLoadingOlderMessages ? 1 : 0),
+      itemCount: state.messages.length + (state.isStreamingInCurrentSession ? 1 : 0) + (state.isLoadingOlderMessages ? 1 : 0),
       itemBuilder: (context, index) {
         if (state.isLoadingOlderMessages && index == 0) {
           return const Padding(
@@ -80,57 +86,74 @@ class ChatMessageList extends StatelessWidget {
               msgIndex == state.messages.length - 1 &&
               msg.role == MessageRole.assistant &&
               msg.id > 0;
-          final canEdit =
-              !state.isStreamingInCurrentSession && msg.role == MessageRole.user && msg.id > 0;
+          final canEdit = !state.isStreamingInCurrentSession && msg.role == MessageRole.user && msg.id > 0;
 
           final edits = canEdit ? state.editsByMessageId[msg.id] : null;
           final cursor = canEdit ? state.editCursorByMessageId[msg.id] : null;
           final hasEdits = edits != null && edits.isNotEmpty;
           final isEdited = canEdit && (state.editedMessageIds.contains(msg.id) || hasEdits || (msg.updatedAt != null && msg.updatedAt!.millisecondsSinceEpoch != msg.createdAt.millisecondsSinceEpoch));
           final versionsCount = hasEdits ? edits.length + 1 : 1;
-          final versionIdx = hasEdits ? (cursor ?? (versionsCount - 1)).clamp(0, versionsCount - 1) : 0;
+          final versionIdx = hasEdits
+              ? (cursor ?? (versionsCount - 1)).clamp(0, versionsCount - 1)
+              : 0;
           final displayMsg = (canEdit && hasEdits)
-            ? Message(
-              id: msg.id,
-              content: _contentForVersion(msg, edits, versionIdx),
-              role: msg.role,
-              createdAt: msg.createdAt,
-              updatedAt: msg.updatedAt,
-              attachmentFileName: msg.attachmentFileName,
-              attachmentContent: msg.attachmentContent,
-              attachmentFileId: msg.attachmentFileId,
-              useFileRag: msg.useFileRag,
-              fileRagTopK: msg.fileRagTopK,
-              fileRagEmbedModel: msg.fileRagEmbedModel,
-            )
-            : msg;
+              ? Message(
+                  id: msg.id,
+                  content: _contentForVersion(msg, edits, versionIdx),
+                  role: msg.role,
+                  createdAt: msg.createdAt,
+                  updatedAt: msg.updatedAt,
+                  attachmentFileName: msg.attachmentFileName,
+                  attachmentContent: msg.attachmentContent,
+                  attachmentFileId: msg.attachmentFileId,
+                  useFileRag: msg.useFileRag,
+                  fileRagTopK: msg.fileRagTopK,
+                  fileRagEmbedModel: msg.fileRagEmbedModel,
+                )
+              : msg;
 
-          final regens = msg.role == MessageRole.assistant ? state.regenerationsByMessageId[msg.id] : null;
-          final regenCursor = msg.role == MessageRole.assistant ? state.regenerationCursorByMessageId[msg.id] : null;
+          final regens = msg.role == MessageRole.assistant
+              ? state.regenerationsByMessageId[msg.id]
+              : null;
+          final regenCursor = msg.role == MessageRole.assistant
+              ? state.regenerationCursorByMessageId[msg.id]
+              : null;
           final hasRegens = regens != null && regens.isNotEmpty;
           final regenVersionsCount = hasRegens ? regens.length + 1 : 1;
           final regenVersionIdx = hasRegens
-            ? (regenCursor ?? (regenVersionsCount - 1)).clamp(0, regenVersionsCount - 1)
-            : 0;
-          final displayAssistantMsg = (msg.role == MessageRole.assistant && hasRegens)
-            ? Message(
-              id: msg.id,
-              content: _assistantContentForVersion(msg, regens, regenVersionIdx),
-              role: msg.role,
-              createdAt: msg.createdAt,
-              updatedAt: msg.updatedAt,
-              attachmentFileName: msg.attachmentFileName,
-              attachmentContent: msg.attachmentContent,
-              attachmentFileId: msg.attachmentFileId,
-              useFileRag: msg.useFileRag,
-              fileRagTopK: msg.fileRagTopK,
-              fileRagEmbedModel: msg.fileRagEmbedModel,
-            )
-            : displayMsg;
-          final showAssistantNav = msg.role == MessageRole.assistant && (state.regeneratedAssistantMessageIds.contains(msg.id) || hasRegens);
+              ? (regenCursor ?? (regenVersionsCount - 1)).clamp(
+                  0,
+                  regenVersionsCount - 1,
+                )
+              : 0;
+          final displayAssistantMsg =
+              (msg.role == MessageRole.assistant && hasRegens)
+              ? Message(
+                  id: msg.id,
+                  content: _assistantContentForVersion(
+                    msg,
+                    regens,
+                    regenVersionIdx,
+                  ),
+                  role: msg.role,
+                  createdAt: msg.createdAt,
+                  updatedAt: msg.updatedAt,
+                  attachmentFileName: msg.attachmentFileName,
+                  attachmentContent: msg.attachmentContent,
+                  attachmentFileId: msg.attachmentFileId,
+                  useFileRag: msg.useFileRag,
+                  fileRagTopK: msg.fileRagTopK,
+                  fileRagEmbedModel: msg.fileRagEmbedModel,
+                )
+              : displayMsg;
+          final showAssistantNav =
+              msg.role == MessageRole.assistant &&
+              (state.regeneratedAssistantMessageIds.contains(msg.id) ||
+                  hasRegens);
 
           final isLastInList = msgIndex == state.messages.length - 1;
-          final showContinuePartial = !state.isStreamingInCurrentSession &&
+          final showContinuePartial =
+              !state.isStreamingInCurrentSession &&
               isLastInList &&
               msg.role == MessageRole.assistant &&
               msg.id > 0 &&
@@ -142,46 +165,65 @@ class ChatMessageList extends StatelessWidget {
             child: ChatBubble(
               message: displayAssistantMsg,
               sessionId: state.currentSessionId,
+              ragPreviewBySessionFile: state.ragPreviewBySessionFile,
               showContinuePartial: showContinuePartial,
               showEditNav: isEdited || showAssistantNav,
               onRegenerate: canRegenerate
-                ? () => context.read<ChatBloc>().add(
-                  ChatRegenerateAssistant(msg.id),
-                )
-                : null,
+                  ? () => context.read<ChatBloc>().add(
+                      ChatRegenerateAssistant(msg.id),
+                    )
+                  : null,
               onEditSubmit: canEdit
-                ? (newText) async {
-                  context.read<ChatBloc>().add(ChatEditUserMessageAndContinue(msg.id, newText));
-                }
-                : null,
+                  ? (newText) async {
+                      context.read<ChatBloc>().add(
+                        ChatEditUserMessageAndContinue(msg.id, newText),
+                      );
+                    }
+                  : null,
               editsTotal: isEdited
-                ? versionsCount
-                : (showAssistantNav ? regenVersionsCount : null),
+                  ? versionsCount
+                  : (showAssistantNav ? regenVersionsCount : null),
               editsIndex: isEdited
-                ? versionIdx
-                : (showAssistantNav ? regenVersionIdx : null),
+                  ? versionIdx
+                  : (showAssistantNav ? regenVersionIdx : null),
               onPrevEdit: isEdited
-                ? ((!canEdit || (hasEdits && versionIdx <= 0))
-                  ? null
-                  : () => context.read<ChatBloc>().add(ChatNavigateUserMessageEdit(msg.id, -1)))
-                : (showAssistantNav
-                  ? ((hasRegens && regenVersionIdx <= 0)
-                    ? null
-                    : () => context.read<ChatBloc>().add(ChatNavigateAssistantMessageRegeneration(msg.id, -1)))
-                  : null),
+                  ? ((!canEdit || (hasEdits && versionIdx <= 0))
+                        ? null
+                        : () => context.read<ChatBloc>().add(
+                            ChatNavigateUserMessageEdit(msg.id, -1),
+                          ))
+                  : (showAssistantNav
+                        ? ((hasRegens && regenVersionIdx <= 0)
+                              ? null
+                              : () => context.read<ChatBloc>().add(
+                                  ChatNavigateAssistantMessageRegeneration(
+                                    msg.id,
+                                    -1,
+                                  ),
+                                ))
+                        : null),
               onNextEdit: isEdited
-                ? ((!canEdit || (hasEdits && versionIdx >= versionsCount - 1))
-                  ? null
-                  : () => context.read<ChatBloc>().add(ChatNavigateUserMessageEdit(msg.id, 1)))
-                : (showAssistantNav
-                  ? ((hasRegens && regenVersionIdx >= regenVersionsCount - 1)
-                    ? null
-                    : () => context.read<ChatBloc>().add(ChatNavigateAssistantMessageRegeneration(msg.id, 1)))
-                    : null),
+                  ? ((!canEdit || (hasEdits && versionIdx >= versionsCount - 1))
+                        ? null
+                        : () => context.read<ChatBloc>().add(
+                            ChatNavigateUserMessageEdit(msg.id, 1),
+                          ))
+                  : (showAssistantNav
+                        ? ((hasRegens &&
+                                  regenVersionIdx >= regenVersionsCount - 1)
+                              ? null
+                              : () => context.read<ChatBloc>().add(
+                                  ChatNavigateAssistantMessageRegeneration(
+                                    msg.id,
+                                    1,
+                                  ),
+                                ))
+                        : null),
             ),
           );
         }
-        if (state.isStreamingInCurrentSession && msgIndex == state.messages.length) {
+        if (state.isStreamingInCurrentSession &&
+            msgIndex == state.messages.length) {
           return Padding(
             padding: const EdgeInsets.only(bottom: 8),
             child: ChatBubble(
@@ -192,6 +234,7 @@ class ChatMessageList extends StatelessWidget {
                 createdAt: DateTime.now(),
               ),
               sessionId: state.currentSessionId,
+              ragPreviewBySessionFile: state.ragPreviewBySessionFile,
               showEditNav: false,
               isStreaming: true,
               streamingStatus: state.toolProgressLabel,

@@ -118,9 +118,10 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	var fileRAG *usecase.SendMessageFileRAGOptions
 	if req.GetUseFileRag() || req.GetFileRagTopK() != 0 || strings.TrimSpace(req.GetFileRagEmbedModel()) != "" {
 		fileRAG = &usecase.SendMessageFileRAGOptions{
-			UseFileRAG: req.GetUseFileRag(),
-			TopK:       int(req.GetFileRagTopK()),
-			EmbedModel: strings.TrimSpace(req.GetFileRagEmbedModel()),
+			UseFileRAG:        req.GetUseFileRag(),
+			TopK:              int(req.GetFileRagTopK()),
+			EmbedModel:        strings.TrimSpace(req.GetFileRagEmbedModel()),
+			ForceVectorSearch: req.GetFileRagForceVector(),
 		}
 	}
 
@@ -170,9 +171,12 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
 		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
+		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
 		}
+
 		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice {
+		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
 			role = "system"
 		}
 
@@ -188,6 +192,16 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 		if chunk.ToolName != "" {
 			tn := chunk.ToolName
 			resp.ToolName = &tn
+		}
+
+		if chunk.RAGMode != "" {
+			rm := chunk.RAGMode
+			resp.RagMode = &rm
+		}
+
+		if chunk.RAGSourcesJSON != "" {
+			rj := chunk.RAGSourcesJSON
+			resp.RagSourcesJson = &rj
 		}
 
 		if err := stream.Send(resp); err != nil {
@@ -258,9 +272,12 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
 		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
+		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
 		}
+
 		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice {
+		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
 			role = "system"
 		}
 
@@ -276,6 +293,16 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 		if chunk.ToolName != "" {
 			tn := chunk.ToolName
 			resp.ToolName = &tn
+		}
+
+		if chunk.RAGMode != "" {
+			rm := chunk.RAGMode
+			resp.RagMode = &rm
+		}
+
+		if chunk.RAGSourcesJSON != "" {
+			rj := chunk.RAGSourcesJSON
+			resp.RagSourcesJson = &rj
 		}
 
 		if err := stream.Send(resp); err != nil {
@@ -349,9 +376,12 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
 		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
+		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
 		}
+
 		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice {
+		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
 			role = "system"
 		}
 
@@ -367,6 +397,16 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 		if chunk.ToolName != "" {
 			tn := chunk.ToolName
 			resp.ToolName = &tn
+		}
+
+		if chunk.RAGMode != "" {
+			rm := chunk.RAGMode
+			resp.RagMode = &rm
+		}
+
+		if chunk.RAGSourcesJSON != "" {
+			rj := chunk.RAGSourcesJSON
+			resp.RagSourcesJson = &rj
 		}
 
 		if err := stream.Send(resp); err != nil {
@@ -438,9 +478,12 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_NOTICE
 		} else if chunk.Kind == usecase.StreamChunkKindReasoning {
 			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_REASONING
+		} else if chunk.Kind == usecase.StreamChunkKindRAGMeta {
+			pbKind = chatpb.StreamChunkKind_STREAM_CHUNK_KIND_RAG_META
 		}
+
 		role := "assistant"
-		if chunk.Kind == usecase.StreamChunkKindNotice {
+		if chunk.Kind == usecase.StreamChunkKindNotice || chunk.Kind == usecase.StreamChunkKindRAGMeta {
 			role = "system"
 		}
 
@@ -456,6 +499,16 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 		if chunk.ToolName != "" {
 			tn := chunk.ToolName
 			resp.ToolName = &tn
+		}
+
+		if chunk.RAGMode != "" {
+			rm := chunk.RAGMode
+			resp.RagMode = &rm
+		}
+
+		if chunk.RAGSourcesJSON != "" {
+			rj := chunk.RAGSourcesJSON
+			resp.RagSourcesJson = &rj
 		}
 
 		if err := stream.Send(resp); err != nil {
@@ -1106,7 +1159,7 @@ func (c *ChatHandler) SearchSessionKnowledge(ctx context.Context, req *chatpb.Se
 		topK = 32
 	}
 
-	hits, err := c.documentIngest.SearchSessionKnowledge(ctx, userID, req.GetSessionId(), strings.TrimSpace(req.GetEmbedModel()), q, topK, nil)
+	hits, err := c.documentIngest.SearchSessionKnowledge(ctx, userID, req.GetSessionId(), strings.TrimSpace(req.GetEmbedModel()), q, topK, nil, c.cfg.RAG.EffectiveNeighborChunkWindow())
 	if err != nil {
 		if errors.Is(err, domain.ErrUnauthorized) {
 			return nil, status.Error(codes.PermissionDenied, "нет доступа")

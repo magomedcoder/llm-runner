@@ -14,6 +14,8 @@ import 'package:gen/presentation/widgets/app_top_notice.dart';
 import 'package:gen/core/spreadsheet_file_export.dart';
 import 'package:gen/core/user_file_save.dart';
 import 'package:gen/domain/entities/message.dart';
+import 'package:gen/domain/entities/rag_document_preview.dart';
+import 'package:gen/presentation/screens/chat/widgets/rag_context_preview_banner.dart';
 import 'package:gen/domain/usecases/chat/get_session_file_usecase.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_bloc.dart';
 import 'package:gen/presentation/screens/chat/bloc/chat_event.dart';
@@ -54,17 +56,10 @@ MarkdownStyleSheet assistantBubbleMarkdownSheet(ThemeData theme) {
     ),
     blockquoteDecoration: BoxDecoration(
       border: Border(
-        left: BorderSide(
-            color: onVar.withValues(alpha: 0.45),
-            width: 4,
-        ),
+        left: BorderSide(color: onVar.withValues(alpha: 0.45), width: 4),
       ),
     ),
-    blockquotePadding: const EdgeInsets.only(
-        left: 12,
-        top: 2,
-        bottom: 2,
-    ),
+    blockquotePadding: const EdgeInsets.only(left: 12, top: 2, bottom: 2),
     codeblockPadding: const EdgeInsets.all(10),
     codeblockDecoration: BoxDecoration(
       color: Colors.transparent,
@@ -94,6 +89,97 @@ BorderRadius _bubbleRadius(bool isUser) {
   );
 }
 
+class _AssistantReasoningCard extends StatelessWidget {
+  const _AssistantReasoningCard({
+    required this.theme,
+    required this.text,
+    required this.messageTextColor,
+    required this.isStreaming,
+    required this.maxWidth,
+  });
+
+  final ThemeData theme;
+  final String text;
+  final Color messageTextColor;
+  final bool isStreaming;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = theme.colorScheme;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8, top: 2),
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: cs.outlineVariant.withValues(alpha: 0.55)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(13),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ColoredBox(
+              color: cs.tertiary.withValues(alpha: 0.9),
+              child: const SizedBox(width: 4),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                child: Theme(
+                  data: theme.copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    expandedAlignment: Alignment.centerLeft,
+                    childrenPadding: const EdgeInsets.only(top: 6),
+                    initiallyExpanded: isStreaming,
+                    collapsedShape: const RoundedRectangleBorder(),
+                    shape: const RoundedRectangleBorder(),
+                    title: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          Icons.psychology_outlined,
+                          size: 20,
+                          color: cs.tertiary,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Размышление модели',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: messageTextColor.withValues(alpha: 0.88),
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    children: [
+                      SelectableText(
+                        text,
+                        style: TextStyle(
+                          fontSize: 13,
+                          height: 1.45,
+                          color: messageTextColor.withValues(alpha: 0.76),
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class ChatBubble extends StatefulWidget {
   final Message message;
   final int? sessionId;
@@ -108,6 +194,7 @@ class ChatBubble extends StatefulWidget {
   final VoidCallback? onNextEdit;
   final bool showContinuePartial;
   final String? streamingReasoning;
+  final Map<String, RagDocumentPreview> ragPreviewBySessionFile;
 
   const ChatBubble({
     super.key,
@@ -124,6 +211,7 @@ class ChatBubble extends StatefulWidget {
     this.onPrevEdit,
     this.onNextEdit,
     this.showContinuePartial = false,
+    this.ragPreviewBySessionFile = const {},
   });
 
   @override
@@ -199,6 +287,41 @@ class _ChatBubbleState extends State<ChatBubble> {
     }
   }
 
+  void _showRagPreviewForAttachment(BuildContext context) {
+    final sid = widget.sessionId;
+    final fid = widget.message.attachmentFileId;
+    if (sid == null || fid == null || fid <= 0) {
+      return;
+    }
+    final key = '${sid}_$fid';
+    final stored = widget.ragPreviewBySessionFile[key];
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (ctx) {
+        final theme = Theme.of(ctx);
+        return SafeArea(
+          child: stored != null
+              ? SingleChildScrollView(
+                  child: RagContextPreviewBanner(
+                    preview: stored,
+                    onDismiss: () => Navigator.of(ctx).pop(),
+                  ),
+                )
+              : Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
+                  child: Text(
+                    'Сохранённое превью будет после ответа с поиском по документу (RAG). '
+                    'Отправьте сообщение с тем же файлом и включённым поиском по вложению.',
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final message = widget.message;
@@ -208,15 +331,32 @@ class _ChatBubbleState extends State<ChatBubble> {
     final width = Breakpoints.width(context);
     const minBubbleWidth = 64.0;
     final maxBubbleWidth = Breakpoints.isMobile(context)
-      ? width * 0.88
-      : (Breakpoints.isTablet(context) ? 420.0 : 560.0);
+        ? width * 0.88
+        : (Breakpoints.isTablet(context) ? 420.0 : 560.0);
     final semanticsRole = isUser ? 'Ваше сообщение' : 'Ответ ассистента';
     final hasCopyableText = message.content.trim().isNotEmpty;
     final editsTotal = widget.editsTotal;
     final editsIndex = widget.editsIndex;
     final showEditNav = widget.showEditNav;
-    final sessionFileIds = !isUser && !isStreaming && widget.sessionId != null ? extractSessionFileIdsFromText(message.content) : const <int>[];
-    final attachmentLabel = message.attachmentFileName ?? (message.attachmentFileId != null ? 'Файл #${message.attachmentFileId}' : null);
+    final sessionFileIds = !isUser && !isStreaming && widget.sessionId != null
+        ? extractSessionFileIdsFromText(message.content)
+        : const <int>[];
+    final attachmentLabel =
+        message.attachmentFileName ??
+        (message.attachmentFileId != null
+            ? 'Файл #${message.attachmentFileId}'
+            : null);
+    final attachmentFileId = message.attachmentFileId;
+    final ragPreviewKey =
+        widget.sessionId != null &&
+            attachmentFileId != null &&
+            attachmentFileId > 0
+        ? '${widget.sessionId}_$attachmentFileId'
+        : null;
+    final hasRagPreviewStored =
+        ragPreviewKey != null &&
+        widget.ragPreviewBySessionFile.containsKey(ragPreviewKey);
+    final canOpenRagPreview = ragPreviewKey != null && !isStreaming;
     final messageTextColor = _messageBodyTextColor(theme.colorScheme);
 
     return Semantics(
@@ -225,9 +365,19 @@ class _ChatBubbleState extends State<ChatBubble> {
       child: Align(
         alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
         child: Column(
-          crossAxisAlignment: isUser ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: isUser
+              ? CrossAxisAlignment.end
+              : CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (!isUser && _reasoningText().trim().isNotEmpty)
+              _AssistantReasoningCard(
+                theme: theme,
+                text: _reasoningText(),
+                messageTextColor: messageTextColor,
+                isStreaming: isStreaming,
+                maxWidth: maxBubbleWidth,
+              ),
             Container(
               margin: const EdgeInsets.symmetric(vertical: 2),
               padding: EdgeInsets.symmetric(
@@ -246,61 +396,66 @@ class _ChatBubbleState extends State<ChatBubble> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (!isUser && _reasoningText().trim().isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 10),
-                      child: Theme(
-                        data: theme.copyWith(dividerColor: Colors.transparent),
-                        child: ExpansionTile(
-                          tilePadding: EdgeInsets.zero,
-                          expandedAlignment: Alignment.centerLeft,
-                          childrenPadding: const EdgeInsets.only(top: 6),
-                          initiallyExpanded: widget.isStreaming,
-                          title: Text(
-                            'Размышление модели',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                              color: messageTextColor.withValues(alpha: 0.78),
-                            ),
-                          ),
-                          children: [
-                            SelectableText(
-                              _reasoningText(),
-                              style: TextStyle(
-                                fontSize: 13,
-                                height: 1.45,
-                                color: messageTextColor.withValues(alpha: 0.72),
-                                fontFamily: 'monospace',
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
                   if (attachmentLabel != null)
                     Padding(
                       padding: const EdgeInsets.only(bottom: 8),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.insert_drive_file_rounded,
-                            size: 18,
-                            color: messageTextColor,
-                          ),
-                          const SizedBox(width: 6),
-                          Flexible(
-                            child: Text(
-                              attachmentLabel,
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: messageTextColor,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: canOpenRagPreview
+                              ? () => _showRagPreviewForAttachment(context)
+                              : null,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: 4,
+                              horizontal: 2,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.insert_drive_file_rounded,
+                                  size: 18,
+                                  color: messageTextColor,
+                                ),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    attachmentLabel,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: messageTextColor,
+                                      decoration: canOpenRagPreview
+                                          ? TextDecoration.underline
+                                          : TextDecoration.none,
+                                      decorationStyle:
+                                          TextDecorationStyle.dotted,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                if (canOpenRagPreview) ...[
+                                  const SizedBox(width: 4),
+                                  Tooltip(
+                                    message: hasRagPreviewStored
+                                        ? 'Как модель видит документ'
+                                        : 'Превью после ответа с RAG',
+                                    child: Icon(
+                                      hasRagPreviewStored
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                      size: 18,
+                                      color: messageTextColor.withValues(
+                                        alpha: 0.75,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
                     ),
                   if (_isEditing && isUser && !isStreaming)
@@ -317,46 +472,47 @@ class _ChatBubbleState extends State<ChatBubble> {
                         setState(() => _isEditing = false);
                       },
                       onSubmitText: widget.onEditSubmit == null
-                        ? null
-                        : (text) async {
-                          final raw = text;
-                          final trimmed = raw.trim();
+                          ? null
+                          : (text) async {
+                              final raw = text;
+                              final trimmed = raw.trim();
 
-                          if (trimmed.isEmpty) {
-                            if (!mounted) {
-                              return;
-                            }
+                              if (trimmed.isEmpty) {
+                                if (!mounted) {
+                                  return;
+                                }
 
-                            showAppTopNotice(
-                              'Текст не может быть пустым',
-                              error: true,
-                            );
-                            return;
-                          }
+                                showAppTopNotice(
+                                  'Текст не может быть пустым',
+                                  error: true,
+                                );
+                                return;
+                              }
 
-                          await widget.onEditSubmit!(trimmed);
-                          if (!mounted) {
-                            return;
-                          }
-                          setState(() => _isEditing = false);
-                        },
+                              await widget.onEditSubmit!(trimmed);
+                              if (!mounted) {
+                                return;
+                              }
+                              setState(() => _isEditing = false);
+                            },
                     )
                   else if (message.content.isNotEmpty)
                     isUser
-                      ? SelectableText(
-                        message.content,
-                        style: TextStyle(
-                          color: messageTextColor,
-                          fontSize: 15,
-                          height: 1.5,
-                        ),
-                      )
-                      : _assistantMessageBody(
-                        theme,
-                        messageTextColor,
-                        message.content,
-                      ),
-                  if (isStreaming && (widget.streamingStatus?.trim().isNotEmpty ?? false))
+                        ? SelectableText(
+                            message.content,
+                            style: TextStyle(
+                              color: messageTextColor,
+                              fontSize: 15,
+                              height: 1.5,
+                            ),
+                          )
+                        : _assistantMessageBody(
+                            theme,
+                            messageTextColor,
+                            message.content,
+                          ),
+                  if (isStreaming &&
+                      (widget.streamingStatus?.trim().isNotEmpty ?? false))
                     Padding(
                       padding: EdgeInsets.only(
                         bottom: 8,
@@ -414,27 +570,27 @@ class _ChatBubbleState extends State<ChatBubble> {
                             children: [
                               for (final fid in sessionFileIds)
                                 Tooltip(
-                                  message: 'Скачать артефакт с сервера (в приложении превью нет)',
+                                  message:
+                                      'Скачать артефакт с сервера (в приложении превью нет)',
                                   child: TextButton.icon(
                                     onPressed: _downloadingFileId != null
-                                      ? null
-                                      : () => _downloadSessionFile(fid),
+                                        ? null
+                                        : () => _downloadSessionFile(fid),
                                     icon: _downloadingFileId == fid
-                                      ? SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          color: messageTextColor.withValues(
-                                            alpha: 0.85,
+                                        ? SizedBox(
+                                            width: 16,
+                                            height: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: messageTextColor
+                                                  .withValues(alpha: 0.85),
+                                            ),
+                                          )
+                                        : Icon(
+                                            Icons.download_rounded,
+                                            size: 18,
+                                            color: theme.colorScheme.primary,
                                           ),
-                                        ),
-                                      )
-                                      : Icon(
-                                        Icons.download_rounded,
-                                        size: 18,
-                                        color: theme.colorScheme.primary,
-                                      ),
                                     label: Text(
                                       'Файл #$fid',
                                       style: TextStyle(
@@ -466,7 +622,12 @@ class _ChatBubbleState extends State<ChatBubble> {
                 showEditNav ||
                 widget.showContinuePartial)
               Padding(
-                padding: const EdgeInsets.only(left: 4, right: 4, top: 2, bottom: 4),
+                padding: const EdgeInsets.only(
+                  left: 4,
+                  right: 4,
+                  top: 2,
+                  bottom: 4,
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -477,13 +638,18 @@ class _ChatBubbleState extends State<ChatBubble> {
                         tooltip: 'Предыдущая версия',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                       ),
                       Text(
                         '${(editsIndex ?? 0) + 1}/${editsTotal ?? 1}',
                         style: TextStyle(
                           fontSize: 12,
-                          color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.9),
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.9,
+                          ),
                         ),
                       ),
                       IconButton(
@@ -492,33 +658,38 @@ class _ChatBubbleState extends State<ChatBubble> {
                         tooltip: 'Следующая версия',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                       ),
                       const SizedBox(width: 8),
                     ],
                     if (hasCopyableText || isStreaming)
                       IconButton(
                         onPressed: hasCopyableText
-                          ? () async {
-                            await Clipboard.setData(
-                              ClipboardData(text: message.content),
-                            );
+                            ? () async {
+                                await Clipboard.setData(
+                                  ClipboardData(text: message.content),
+                                );
 
-                            if (!mounted) {
-                              return;
-                            }
+                                if (!mounted) {
+                                  return;
+                                }
 
-                            setState(() => _justCopied = true);
+                                setState(() => _justCopied = true);
 
-                            Future.delayed(const Duration(seconds: 2), () {
-                              if (mounted) {
-                                setState(() => _justCopied = false);
+                                Future.delayed(const Duration(seconds: 2), () {
+                                  if (mounted) {
+                                    setState(() => _justCopied = false);
+                                  }
+                                });
                               }
-                            });
-                          }
-                          : null,
+                            : null,
                         icon: Icon(
-                          _justCopied ? Icons.check_rounded : Icons.copy_rounded,
+                          _justCopied
+                              ? Icons.check_rounded
+                              : Icons.copy_rounded,
                           size: 18,
                           color: theme.colorScheme.onSurfaceVariant.withValues(
                             alpha: hasCopyableText ? 1 : 0.4,
@@ -527,54 +698,58 @@ class _ChatBubbleState extends State<ChatBubble> {
                         tooltip: _justCopied ? 'Скопировано' : 'Копировать',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                         style: IconButton.styleFrom(
-                          foregroundColor: theme.colorScheme.onSurfaceVariant.withValues(
-                            alpha: hasCopyableText ? 1 : 0.4,
-                          ),
+                          foregroundColor: theme.colorScheme.onSurfaceVariant
+                              .withValues(alpha: hasCopyableText ? 1 : 0.4),
                         ),
                       ),
                     if (widget.showContinuePartial) ...[
                       const SizedBox(width: 4),
                       IconButton(
                         onPressed: message.id > 0
-                          ? () => context.read<ChatBloc>().add(ChatContinueAssistant(message.id))
-                          : null,
-                        icon: const Icon(
-                          Icons.play_arrow_rounded,
-                          size: 18,
-                        ),
+                            ? () => context.read<ChatBloc>().add(
+                                ChatContinueAssistant(message.id),
+                              )
+                            : null,
+                        icon: const Icon(Icons.play_arrow_rounded, size: 18),
                         tooltip: 'Продолжить',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                       ),
                     ],
                     if (widget.onRegenerate != null)
                       IconButton(
                         onPressed: widget.onRegenerate,
-                        icon: const Icon(
-                          Icons.refresh_rounded,
-                          size: 18,
-                        ),
+                        icon: const Icon(Icons.refresh_rounded, size: 18),
                         tooltip: 'Перегенерировать ответ',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                       ),
                     if (widget.onEditSubmit != null && isUser && !isStreaming)
                       IconButton(
                         onPressed: () {
                           setState(() => _isEditing = !_isEditing);
                         },
-                        icon: const Icon(
-                          Icons.edit_rounded,
-                          size: 18,
-                        ),
+                        icon: const Icon(Icons.edit_rounded, size: 18),
                         tooltip: 'Редактировать и продолжить',
                         padding: EdgeInsets.zero,
                         visualDensity: VisualDensity.compact,
-                        constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+                        constraints: const BoxConstraints(
+                          minWidth: 32,
+                          minHeight: 32,
+                        ),
                       ),
                   ],
                 ),
@@ -591,7 +766,9 @@ final _mcpToolImageBlock = RegExp(
   multiLine: true,
 );
 
-final _markdownDataImage = RegExp(r'!\[([^\]]*)\]\(data:image/([\w.+-]+);base64,([A-Za-z0-9+/=]+)\)');
+final _markdownDataImage = RegExp(
+  r'!\[([^\]]*)\]\(data:image/([\w.+-]+);base64,([A-Za-z0-9+/=]+)\)',
+);
 
 abstract class _AssistantBodySeg {}
 
@@ -659,7 +836,11 @@ List<_AssistantBodySeg> _parseAssistantBodySegments(String input) {
   return out;
 }
 
-Widget _assistantMessageBody(ThemeData theme, Color messageTextColor, String content) {
+Widget _assistantMessageBody(
+  ThemeData theme,
+  Color messageTextColor,
+  String content,
+) {
   final sheet = assistantBubbleMarkdownSheet(theme);
   final preBuilder = CodeBlockBuilder(
     textStyle: TextStyle(
@@ -668,9 +849,7 @@ Widget _assistantMessageBody(ThemeData theme, Color messageTextColor, String con
       color: messageTextColor,
     ),
   );
-  final builders = <String, MarkdownElementBuilder>{
-    'pre': preBuilder
-  };
+  final builders = <String, MarkdownElementBuilder>{'pre': preBuilder};
 
   final segs = _parseAssistantBodySegments(content);
   if (segs.length == 1 && segs.first is _AssistantTextSeg) {
@@ -722,10 +901,7 @@ Widget _assistantMessageBody(ThemeData theme, Color messageTextColor, String con
 }
 
 class _ToolProgressLine extends StatelessWidget {
-  const _ToolProgressLine({
-    required this.text,
-    required this.messageTextColor,
-  });
+  const _ToolProgressLine({required this.text, required this.messageTextColor});
 
   final String text;
   final Color messageTextColor;

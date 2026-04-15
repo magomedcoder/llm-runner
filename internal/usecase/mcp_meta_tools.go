@@ -247,8 +247,8 @@ func (c *ChatUseCase) appendMCPLLMContext(ctx context.Context, msg *domain.Messa
 		b.WriteString(line)
 		b.WriteByte('\n')
 	}
-	b.WriteString("\nИнструменты MCP с сервера перечислены в списке tools; у каждого есть описание и JSON-схема параметров — передавай аргументы строго по схеме.\n\n")
-	b.WriteString("Встроенные инструменты GEN для ресурсов и шаблонов промптов (аргументы — JSON):\n")
+	b.WriteString("\nИнструменты MCP с сервера перечислены в списке tools; у каждого есть описание и JSON-схема параметров - передавай аргументы строго по схеме.\n\n")
+	b.WriteString("Встроенные инструменты GEN для ресурсов и шаблонов промптов (аргументы - JSON):\n")
 	b.WriteString("- gen_mcp_list_resources: {\"server_id\": <id>}\n")
 	b.WriteString("- gen_mcp_read_resource: {\"server_id\": <id>, \"uri\": \"<uri из ответа gen_mcp_list_resources>\"}\n")
 	b.WriteString("- gen_mcp_list_prompts: {\"server_id\": <id>}\n")

@@ -76,6 +76,10 @@ class ChatDismissStreamNotice extends ChatEvent {
   const ChatDismissStreamNotice();
 }
 
+class ChatDismissRagDocumentPreview extends ChatEvent {
+  const ChatDismissRagDocumentPreview();
+}
+
 class ChatStopGeneration extends ChatEvent {
   const ChatStopGeneration();
 }

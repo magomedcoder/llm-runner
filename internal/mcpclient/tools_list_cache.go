@@ -135,9 +135,11 @@ func (c *ToolsListCache) ListToolsCached(ctx context.Context, srv *domain.MCPSer
 	e, ok := c.toolEntries[key]
 	c.mu.RUnlock()
 	if ok && now.Before(e.until) {
+		recordListCacheHit()
 		return cloneDeclaredTools(e.tools), nil
 	}
 
+	recordListCacheMiss()
 	tools, err := listTools(ctx, srv, c)
 	if err != nil {
 		return nil, err
@@ -190,9 +192,11 @@ func (c *ToolsListCache) ListResourcesCached(ctx context.Context, srv *domain.MC
 	e, ok := c.resEntries[key]
 	c.mu.RUnlock()
 	if ok && now.Before(e.until) {
+		recordListCacheHit()
 		return cloneDeclaredResources(e.items), nil
 	}
 
+	recordListCacheMiss()
 	items, err := listResources(ctx, srv, c)
 	if err != nil {
 		return nil, err
@@ -241,9 +245,11 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 	e, ok := c.promptsEntries[key]
 	c.mu.RUnlock()
 	if ok && now.Before(e.until) {
+		recordListCacheHit()
 		return cloneDeclaredPrompts(e.items), nil
 	}
 
+	recordListCacheMiss()
 	items, err := listPrompts(ctx, srv, c)
 	if err != nil {
 		return nil, err

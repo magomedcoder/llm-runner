@@ -9,6 +9,20 @@ String userSafeErrorMessage(
     return fallback;
   }
   if (error is GrpcError) {
+    final m = error.message?.trim();
+    if (m != null && m.isNotEmpty) {
+      switch (error.code) {
+        case StatusCode.invalidArgument:
+        case StatusCode.failedPrecondition:
+        case StatusCode.resourceExhausted:
+        case StatusCode.deadlineExceeded:
+        case StatusCode.unavailable:
+        case StatusCode.permissionDenied:
+          return m;
+        default:
+          break;
+      }
+    }
     return 'Ошибка сервера (код ${error.code})';
   }
   if (error is UnauthorizedFailure) {

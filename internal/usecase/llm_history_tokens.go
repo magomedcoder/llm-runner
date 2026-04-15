@@ -100,7 +100,7 @@ func trimLLMMessagesByApproxTokensWithDropped(msgs []*domain.Message, maxTokens 
 	return out, true, dropped
 }
 
-const llmContextTruncationNotice = "\n\n[…фрагмент убран из‑за лимита контекста модели…]"
+const llmContextTruncationNotice = "\n\n[...фрагмент убран из‑за лимита контекста модели...]"
 
 func cloneMessageSliceForTrim(msgs []*domain.Message) []*domain.Message {
 	out := make([]*domain.Message, len(msgs))
@@ -158,7 +158,7 @@ func truncateRunes(s string, maxRunes int) string {
 		return s
 	}
 
-	return string(r[:maxRunes]) + "\n..."
+	return string(r[:maxRunes]) + "\n…"
 }
 
 func buildDroppedDialoguePlainText(msgs []*domain.Message, maxRunes int) string {

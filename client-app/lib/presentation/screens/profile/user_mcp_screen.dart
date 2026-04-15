@@ -67,7 +67,10 @@ class _UserMcpScreenState extends State<UserMcpScreen> {
       if (!mounted) {
         return;
       }
-      showAppTopNotice('Проверка MCP: $e', error: true);
+      showAppTopNotice(
+        userSafeErrorMessage(e, fallback: 'Проверка MCP не удалась'),
+        error: true,
+      );
     }
   }
 

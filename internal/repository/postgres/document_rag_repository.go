@@ -278,6 +278,61 @@ func (r *documentRAGRepository) SearchSessionTopK(
 	return out, nil
 }
 
+func (r *documentRAGRepository) GetChunksByFileChunkIndices(
+	ctx context.Context,
+	sessionID int64,
+	userID int,
+	fileID int64,
+	embeddingModel string,
+	chunkIndices []int,
+) ([]domain.DocumentRAGChunk, error) {
+	if len(chunkIndices) == 0 {
+		return nil, nil
+	}
+
+	uniq := make(map[int]struct{}, len(chunkIndices))
+	var filtered []int
+	for _, ix := range chunkIndices {
+		if ix < 0 {
+			continue
+		}
+
+		if _, ok := uniq[ix]; ok {
+			continue
+		}
+
+		uniq[ix] = struct{}{}
+		filtered = append(filtered, ix)
+	}
+
+	if len(filtered) == 0 {
+		return nil, nil
+	}
+
+	sort.Ints(filtered)
+
+	var rows []model.DocumentRAGChunk
+	err := r.db.WithContext(ctx).
+		Where("chat_session_id = ? AND user_id = ? AND file_id = ? AND embedding_model = ? AND chunk_index IN ?", sessionID, userID, fileID, embeddingModel, filtered).
+		Order("chunk_index ASC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+
+	out := make([]domain.DocumentRAGChunk, 0, len(rows))
+	for i := range rows {
+		dc, err := documentRAGChunkToDomain(&rows[i])
+		if err != nil {
+			continue
+		}
+
+		out = append(out, dc)
+	}
+
+	return out, nil
+}
+
 func fileRAGIndexToDomain(m *model.FileRAGIndex) *domain.FileRAGIndex {
 	d := &domain.FileRAGIndex{
 		FileID:              m.FileID,
