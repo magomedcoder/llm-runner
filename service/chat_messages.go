@@ -204,7 +204,9 @@ func fallbackToolsBlock(tools []domain.Tool) string {
 		}
 		b.WriteString("\n")
 	}
-	b.WriteString("\nReply with JSON: {\"name\": \"tool_name\", \"arguments\": {...}}\n\n")
+	b.WriteString("\nЧтобы вызвать инструмент, верни один JSON-массив (можно в блоке ```json), строго в формате:\n")
+	b.WriteString(`[{"tool_name":"<имя из списка>","parameters":{...}}]`)
+	b.WriteString("\n\nПоле parameters - объект JSON; если параметров нет, используй {}.\n\n")
 
 	return b.String()
 }

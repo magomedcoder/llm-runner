@@ -239,7 +239,7 @@ func ApplyModelYAMLSystem(norm []*domain.AIChatMessage, yamlCfg *ModelYAML) []*d
 
 	sid := norm[0].SessionId
 	if norm[0].Role == domain.AIChatMessageRoleSystem {
-		merged := extra + "\n\n" + norm[0].Content
+		merged := extra + "\n\n" + strings.TrimSpace(norm[0].Content)
 		cp := *norm[0]
 		cp.Content = merged
 		out := make([]*domain.AIChatMessage, len(norm))

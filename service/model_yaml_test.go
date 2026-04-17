@@ -93,6 +93,33 @@ func TestApplyModelYAMLSystem(t *testing.T) {
 	}
 }
 
+func TestApplyModelYAMLSystem_existingSystemKeepsRuntimePolicyLast(t *testing.T) {
+	norm := []*domain.AIChatMessage{
+		domain.NewAIChatMessage(1, "runtime-policy", domain.AIChatMessageRoleSystem),
+		domain.NewAIChatMessage(1, "answer in json", domain.AIChatMessageRoleUser),
+	}
+
+	cfg := &ModelYAML{
+		System: "model-hint",
+	}
+	out := ApplyModelYAMLSystem(norm, cfg)
+	if len(out) != 2 {
+		t.Fatalf("len=%d", len(out))
+	}
+
+	if out[0].Role != domain.AIChatMessageRoleSystem {
+		t.Fatalf("first must be system, got %s", out[0].Role)
+	}
+
+	if out[0].Content != "model-hint\n\nruntime-policy" {
+		t.Fatalf("unexpected merged system content: %q", out[0].Content)
+	}
+
+	if out[1].Role != domain.AIChatMessageRoleUser || out[1].Content != "answer in json" {
+		t.Fatalf("user instruction must remain unchanged and last: %+v", out[1])
+	}
+}
+
 func TestResolveModelForInference_sidecar_template(t *testing.T) {
 	dir := t.TempDir()
 	_ = os.WriteFile(filepath.Join(dir, "T.gguf"), []byte{0}, 0o644)

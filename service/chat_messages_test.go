@@ -39,3 +39,25 @@ func TestFormatContentForBuiltinChatTemplate_toolRoleLongMCPStyleContent(t *test
 		t.Fatal("хвост контента обрезан")
 	}
 }
+
+func TestNormalizeChatMessages_preservesUserInstructionAsLastMessage(t *testing.T) {
+	in := []*domain.AIChatMessage{
+		domain.NewAIChatMessage(1, "system-a", domain.AIChatMessageRoleSystem),
+		domain.NewAIChatMessage(1, "system-b", domain.AIChatMessageRoleSystem),
+		domain.NewAIChatMessage(1, "history answer", domain.AIChatMessageRoleAssistant),
+		domain.NewAIChatMessage(1, "strict output format", domain.AIChatMessageRoleUser),
+	}
+
+	out := NormalizeChatMessages(in)
+	if len(out) != 3 {
+		t.Fatalf("len=%d", len(out))
+	}
+
+	if out[0].Role != domain.AIChatMessageRoleSystem {
+		t.Fatalf("first role must be system, got %s", out[0].Role)
+	}
+
+	if out[len(out)-1].Role != domain.AIChatMessageRoleUser || out[len(out)-1].Content != "strict output format" {
+		t.Fatalf("last message must be latest user instruction, got role=%s content=%q", out[len(out)-1].Role, out[len(out)-1].Content)
+	}
+}
