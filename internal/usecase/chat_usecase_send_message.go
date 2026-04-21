@@ -9,7 +9,7 @@ import (
 )
 
 func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int64, userMessage string, attachmentFileIDs []int64, fileRAG *SendMessageFileRAGOptions) (chan ChatStreamChunk, error) {
-	logger.D("SendMessage: сессия=%d пользователь=%d", sessionId, userId)
+	logger.I("SendMessage: phase=enter session_id=%d user_id=%d attachments=%d file_rag=%t", sessionId, userId, len(attachmentFileIDs), fileRAG != nil)
 	session, err := c.verifySessionOwnership(ctx, userId, sessionId)
 	if err != nil {
 		logger.W("SendMessage: сессия не принадлежит пользователю: %v", err)
@@ -60,6 +60,9 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	}
 
 	settings, _ := c.sessionSettingsRepo.GetBySessionID(ctx, sessionId)
+	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
+	c.injectWebSearchAndMCP(ctx, genParams, settings, userId, sessionId)
+
 	messagesForLLM, ragStream, err := c.buildSendPromptAssembly(
 		ctx,
 		sendPromptAssemblyInput{
@@ -75,14 +78,12 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			attachmentContents:       attachmentContents,
 			fileRAG:                  fileRAG,
 			preferFullDocumentIfFits: c.preferFullDocumentWhenFits,
+			genParams:                genParams,
 		},
 	)
 	if err != nil {
 		return nil, err
 	}
-
-	stopSequences, timeoutSeconds, genParams := genParamsFromSessionSettings(settings)
-	c.injectWebSearchAndMCP(ctx, genParams, settings, userId, sessionId)
 
 	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
 		logger.E("SendMessage: подгрузка вложений для раннера: %v", err)
@@ -92,6 +93,7 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	messagesForLLM, historyNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, runnerAddr, true)
 
 	if genParams != nil && len(genParams.Tools) > 0 {
+		logger.I("SendMessage: phase=branch_tool_loop session_id=%d user_id=%d runner=%q model=%q tools=%d history_notice=%t", sessionId, userId, runnerAddr, resolvedModel, len(genParams.Tools), historyNotice)
 		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, historyNotice, ragStream)
 	}
 	if settings != nil {
@@ -119,12 +121,19 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 	}
 	messageID := assistantMsg.Id
 
+	logger.I("SendMessage: phase=branch_plain_llm_stream session_id=%d user_id=%d runner=%q model=%q tools=%d",
+		sessionId, userId, runnerAddr, resolvedModel, func() int {
+			if genParams == nil {
+				return 0
+			}
+			return len(genParams.Tools)
+		}())
 	responseChan, err := c.llmRepo.SendMessageOnRunner(ctx, runnerAddr, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
 		logger.E("SendMessage: вызов LLM: %v", err)
 		return nil, err
 	}
-	logger.V("SendMessage: стрим от LLM запущен сессия=%d", sessionId)
+	logger.I("SendMessage: phase=plain_llm_stream_started session_id=%d message_id=%d", sessionId, messageID)
 
 	var fullResponse strings.Builder
 	clientChan := make(chan ChatStreamChunk, 100)

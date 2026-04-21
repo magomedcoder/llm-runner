@@ -23,8 +23,9 @@ func chatSessionSystemMessage(sessionID int64, settings *domain.ChatSessionSetti
 	return domain.NewMessage(sessionID, text, domain.MessageRoleSystem)
 }
 
-func (c *ChatUseCase) llmChatSystemMessage(ctx context.Context, sessionID int64, settings *domain.ChatSessionSettings, userID int) *domain.Message {
+func (c *ChatUseCase) llmChatSystemMessage(ctx context.Context, sessionID int64, settings *domain.ChatSessionSettings, userID int, genParams *domain.GenerationParams) *domain.Message {
 	msg := chatSessionSystemMessage(sessionID, settings)
 	c.appendMCPLLMContext(ctx, msg, settings, userID)
+	c.appendResolvedToolCatalog(msg, genParams)
 	return msg
 }

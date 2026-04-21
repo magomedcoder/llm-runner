@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
+import 'package:gen/presentation/widgets/safe_markdown_body.dart';
 import 'package:gen/core/redacted_thinking_split.dart';
 import 'package:gen/core/docx_file_export.dart';
 import 'package:gen/core/injector.dart';
@@ -279,6 +280,7 @@ class _ChatBubbleState extends State<ChatBubble> {
     required bool hasAssistantReasoning,
     required String reasoningDisplay,
     required int messageId,
+    required bool enableMarkdownParseGuard,
   }) {
     final hasBody = assistantVisible.trim().isNotEmpty;
     if (!hasAssistantReasoning) {
@@ -287,6 +289,7 @@ class _ChatBubbleState extends State<ChatBubble> {
               theme,
               messageTextColor,
               assistantVisible,
+              enableMarkdownParseGuard: enableMarkdownParseGuard,
             )
           : const SizedBox.shrink();
     }
@@ -312,6 +315,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                       theme,
                       messageTextColor,
                       assistantVisible,
+                      enableMarkdownParseGuard: enableMarkdownParseGuard,
                     )
                   : const SizedBox.shrink(),
             ),
@@ -622,6 +626,7 @@ class _ChatBubbleState extends State<ChatBubble> {
                               hasAssistantReasoning: hasAssistantReasoning,
                               reasoningDisplay: reasoningDisplay,
                               messageId: message.id,
+                              enableMarkdownParseGuard: true,
                             )
                                 : SelectableText(
                                     assistantVisible,
@@ -982,8 +987,9 @@ List<_AssistantBodySeg> _parseAssistantBodySegments(String input) {
 Widget _assistantMessageBody(
   ThemeData theme,
   Color messageTextColor,
-  String content,
-) {
+  String content, {
+  required bool enableMarkdownParseGuard,
+}) {
   final sheet = assistantBubbleMarkdownSheet(theme);
   final preBuilder = CodeBlockBuilder(
     textStyle: TextStyle(
@@ -993,15 +999,35 @@ Widget _assistantMessageBody(
     ),
   );
   final builders = <String, MarkdownElementBuilder>{'pre': preBuilder};
+  final fallbackStyle =
+      sheet.p?.copyWith(color: messageTextColor) ??
+      TextStyle(
+        fontSize: 15,
+        height: 1.5,
+        color: messageTextColor,
+      );
 
-  final segs = _parseAssistantBodySegments(content);
-  if (segs.length == 1 && segs.first is _AssistantTextSeg) {
+  Widget mdBody(String data) {
+    if (enableMarkdownParseGuard) {
+      return SafeMarkdownBody(
+        data: data,
+        selectable: true,
+        styleSheet: sheet,
+        builders: builders,
+        fallbackStyle: fallbackStyle,
+      );
+    }
     return MarkdownBody(
-      data: (segs.first as _AssistantTextSeg).text,
+      data: data,
       selectable: true,
       styleSheet: sheet,
       builders: builders,
     );
+  }
+
+  final segs = _parseAssistantBodySegments(content);
+  if (segs.length == 1 && segs.first is _AssistantTextSeg) {
+    return mdBody((segs.first as _AssistantTextSeg).text);
   }
 
   return Column(
@@ -1011,12 +1037,7 @@ Widget _assistantMessageBody(
         if (s is _AssistantTextSeg && s.text.trim().isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
-            child: MarkdownBody(
-              data: s.text,
-              selectable: true,
-              styleSheet: sheet,
-              builders: builders,
-            ),
+            child: mdBody(s.text),
           )
         else if (s is _AssistantImageSeg)
           Padding(

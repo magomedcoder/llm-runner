@@ -47,7 +47,7 @@ func WithSamplingRunner(ctx context.Context, sr *SamplingRunner) context.Context
 		return ctx
 	}
 
-	logger.D("MCP sampling: WithSamplingRunner session_id=%d model=%q runner=%q", sr.SessionID, sr.Model, sr.RunnerAddr)
+	logger.I("MCP sampling: phase=context_bind session_id=%d model=%q runner=%q", sr.SessionID, sr.Model, sr.RunnerAddr)
 	return context.WithValue(ctx, samplingRunnerCtxKey{}, sr)
 }
 
@@ -134,13 +134,17 @@ func (sr *SamplingRunner) runCompletion(ctx context.Context, msgs []*domain.Mess
 		stops = append(append([]string{}, stops...), extraStops...)
 	}
 
+	logger.I("MCP sampling: phase=llm_request session_id=%d model=%q runner=%q msgs=%d max_tokens=%d temp=%.4f stops=%d", sr.SessionID, sr.Model, sr.RunnerAddr, len(msgs), maxTokens, temperature, len(stops))
+
 	ch, err := sr.LLM.SendMessageOnRunner(ctx, sr.RunnerAddr, sr.SessionID, sr.Model, msgs, stops, sr.TimeoutSeconds, &gp)
 	if err != nil {
+		logger.W("MCP sampling: phase=llm_request_err session_id=%d err=%v", sr.SessionID, err)
 		return "", err
 	}
 
 	text, err := drainSamplingStream(ctx, ch)
 	if err != nil {
+		logger.W("MCP sampling: phase=llm_stream_err session_id=%d err=%v partial_runes=%d", sr.SessionID, err, utf8.RuneCountInString(text))
 		return text, err
 	}
 
@@ -149,9 +153,9 @@ func (sr *SamplingRunner) runCompletion(ctx context.Context, msgs []*domain.Mess
 	if rc > maxSamplingReplyRunes {
 		r := []rune(text)
 		text = string(r[:maxSamplingReplyRunes]) + "\n...(обрезано для MCP sampling)"
-		logger.D("MCP sampling runCompletion: session_id=%d ответ_обрезан runes=%d->%d", sr.SessionID, rc, maxSamplingReplyRunes)
+		logger.I("MCP sampling: phase=llm_done session_id=%d reply_runes=%d->%d truncated=true", sr.SessionID, rc, maxSamplingReplyRunes)
 	} else {
-		logger.D("MCP sampling runCompletion: session_id=%d ответ_runes=%d", sr.SessionID, rc)
+		logger.I("MCP sampling: phase=llm_done session_id=%d reply_runes=%d truncated=false", sr.SessionID, rc)
 	}
 
 	return text, nil
@@ -179,15 +183,15 @@ func runSamplingCreateMessage(ctx context.Context, sr *SamplingRunner, p *mcp.Cr
 	}
 
 	msgs := samplingMessagesToDomain(sr.SessionID, p.SystemPrompt, p.Messages)
-	logger.I("MCP sampling/createMessage: session=%d messages=%d maxTokens=%d", sr.SessionID, len(msgs), p.MaxTokens)
+	logger.I("MCP sampling/createMessage: phase=start session=%d messages=%d maxTokens=%d", sr.SessionID, len(msgs), p.MaxTokens)
 
 	text, err := sr.runCompletion(ctx, msgs, p.MaxTokens, p.Temperature, p.StopSequences)
 	if err != nil {
-		logger.W("MCP sampling/createMessage: %v", err)
+		logger.W("MCP sampling/createMessage: phase=error session=%d err=%v", sr.SessionID, err)
 		return nil, err
 	}
 
-	logger.D("MCP sampling/createMessage: session=%d reply_runes=%d", sr.SessionID, utf8.RuneCountInString(text))
+	logger.I("MCP sampling/createMessage: phase=ok session=%d reply_runes=%d", sr.SessionID, utf8.RuneCountInString(text))
 	return &mcp.CreateMessageResult{
 		Content:    &mcp.TextContent{Text: text},
 		Model:      sr.Model,
@@ -202,16 +206,15 @@ func runSamplingCreateMessageWithTools(ctx context.Context, sr *SamplingRunner, 
 	}
 
 	msgs := samplingMessagesV2ToDomain(sr.SessionID, p.SystemPrompt, p.Messages)
-	logger.I("MCP sampling/createMessage (tools form): session=%d messages=%d serverTools=%d - инструменты sampling в LLM не проксируются",
-		sr.SessionID, len(msgs), len(p.Tools))
+	logger.I("MCP sampling/createMessage (tools form): phase=start session=%d messages=%d serverTools=%d (tools не проксируются в LLM)", sr.SessionID, len(msgs), len(p.Tools))
 
 	text, err := sr.runCompletion(ctx, msgs, p.MaxTokens, p.Temperature, p.StopSequences)
 	if err != nil {
-		logger.W("MCP sampling/createMessage tools: %v", err)
+		logger.W("MCP sampling/createMessage (tools form): phase=error session=%d err=%v", sr.SessionID, err)
 		return nil, err
 	}
 
-	logger.D("MCP sampling/createMessage (tools form): session=%d reply_runes=%d", sr.SessionID, utf8.RuneCountInString(text))
+	logger.I("MCP sampling/createMessage (tools form): phase=ok session=%d reply_runes=%d", sr.SessionID, utf8.RuneCountInString(text))
 	return &mcp.CreateMessageWithToolsResult{
 		Content:    []mcp.Content{&mcp.TextContent{Text: text}},
 		Model:      sr.Model,

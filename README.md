@@ -47,4 +47,3 @@
 
 - [Сборка сервера](docs/build-server.md)
 - [Сборка клиента](docs/build-client.md)
-- [План развития раннера под распределённый запуск](RUNNER-TODO.md)

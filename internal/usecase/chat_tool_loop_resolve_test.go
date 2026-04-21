@@ -95,3 +95,41 @@ func TestResolveDeclaredToolNameUnknown(t *testing.T) {
 		t.Fatal("expected no match")
 	}
 }
+
+func TestResolveDeclaredToolNameRecoversWrongHexWhenSingleToolOnServer(t *testing.T) {
+	orig := "ping"
+	canon := mcpclient.ToolAlias(1, orig)
+	gp := &domain.GenerationParams{
+		Tools: []domain.Tool{
+			{
+				Name:           canon,
+				ParametersJSON: `{}`,
+			},
+		},
+	}
+	hallucinated := "mcp_1_h1234567890abcdef"
+	got, ok := resolveDeclaredToolName(gp, hallucinated)
+	if !ok || got != normalizeToolName(canon) {
+		t.Fatalf("recover single MCP tool on server: ok=%v got=%q want=%q", ok, got, normalizeToolName(canon))
+	}
+}
+
+func TestResolveDeclaredToolNameNoRecoverWhenTwoToolsOnSameServer(t *testing.T) {
+	a1 := mcpclient.ToolAlias(1, "ping")
+	a2 := mcpclient.ToolAlias(1, "pong")
+	gp := &domain.GenerationParams{
+		Tools: []domain.Tool{
+			{
+				Name:           a1,
+				ParametersJSON: `{}`,
+			},
+			{
+				Name:           a2,
+				ParametersJSON: `{}`,
+			},
+		},
+	}
+	if _, ok := resolveDeclaredToolName(gp, "mcp_1_h1234567890abcdef"); ok {
+		t.Fatal("ambiguous server_id=1: must not guess tool from fake hex")
+	}
+}

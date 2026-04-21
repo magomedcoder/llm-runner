@@ -3,12 +3,14 @@ package service
 import (
 	"context"
 	"fmt"
+	"io"
 	"strings"
 	"sync/atomic"
 
 	"github.com/magomedcoder/gen/api/pb/llmrunnerpb"
 	"github.com/magomedcoder/gen/internal/domain"
 	"github.com/magomedcoder/gen/internal/rpcmeta"
+	"github.com/magomedcoder/gen/pkg/logger"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -261,6 +263,12 @@ func (s *LLMRunnerService) SendMessageWithRunnerToolAction(
 	timeoutSeconds int32,
 	genParams *domain.GenerationParams,
 ) (chan domain.LLMStreamChunk, func() string, error) {
+	nTools := 0
+	if genParams != nil {
+		nTools = len(genParams.Tools)
+	}
+
+	logger.I("Runner gRPC client: phase=SendMessage_stream session_id=%d model=%q tools=%d msgs=%d", sessionID, s.resolveRunnerModel(model), nTools, len(messages))
 	return s.sendMessageStream(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
 }
 
@@ -287,11 +295,13 @@ func (s *LLMRunnerService) sendMessageStream(
 
 	stream, err := s.client.SendMessage(s.rpcCtx(ctx), req)
 	if err != nil {
+		logger.W("Runner gRPC client: phase=grpc_send_err session_id=%d model=%q err=%v", sessionID, modelName, err)
 		return nil, nil, fmt.Errorf("gen-runner SendMessage: %w", err)
 	}
 
 	firstMsg, err := stream.Recv()
 	if err != nil {
+		logger.W("Runner gRPC client: phase=grpc_recv_first_err session_id=%d model=%q err=%v", sessionID, modelName, err)
 		return nil, nil, fmt.Errorf("gen-runner SendMessage: ошибка чтения чанка из потока ответа: %w", err)
 	}
 
@@ -304,6 +314,7 @@ func (s *LLMRunnerService) sendMessageStream(
 		for {
 			if ta := strings.TrimSpace(current.GetToolActionJson()); ta != "" {
 				toolBlob.Store(ta)
+				logger.I("Runner gRPC client: phase=tool_action_chunk session_id=%d model=%q blob_bytes=%d done=%t", sessionID, modelName, len(ta), current.GetDone())
 			}
 
 			content := current.GetContent()
@@ -322,6 +333,12 @@ func (s *LLMRunnerService) sendMessageStream(
 
 			msg, err := stream.Recv()
 			if err != nil {
+				if err != io.EOF {
+					logger.W("Runner gRPC client: phase=grpc_recv_err session_id=%d model=%q err=%v", sessionID, modelName, err)
+				} else {
+					logger.V("Runner gRPC client: phase=grpc_stream_eof session_id=%d model=%q", sessionID, modelName)
+				}
+
 				return
 			}
 

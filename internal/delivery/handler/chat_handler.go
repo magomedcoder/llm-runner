@@ -10,6 +10,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/magomedcoder/gen/api/pb/chatpb"
 	"github.com/magomedcoder/gen/api/pb/commonpb"
@@ -114,10 +115,12 @@ func ragSourcesPayloadToPB(p *usecase.RAGSourcesPayload) *chatpb.RagSourcesPaylo
 	return out
 }
 
-func streamSendLoop(responseChan <-chan usecase.ChatStreamChunk, send func(*chatpb.ChatResponse) error) error {
+func streamSendLoop(op string, sessionID int64, traceID string, responseChan <-chan usecase.ChatStreamChunk, send func(*chatpb.ChatResponse) error) error {
+	start := time.Now()
 	createdAt := time.Now().Unix()
 	var lastMsgID int64
 	var accText, accReasoning strings.Builder
+	sendCalls := 0
 
 	for chunk := range responseChan {
 		if (chunk.Kind == usecase.StreamChunkKindText || chunk.Kind == usecase.StreamChunkKindReasoning) && chunk.MessageID != 0 {
@@ -165,8 +168,10 @@ func streamSendLoop(responseChan <-chan usecase.ChatStreamChunk, send func(*chat
 		}
 
 		if err := send(resp); err != nil {
+			logger.W("chat stream: op=%s session_id=%d trace_id=%q phase=chunk_send_err chunk_index=%d err=%v", op, sessionID, traceID, sendCalls, err)
 			return err
 		}
+		sendCalls++
 	}
 
 	final := &chatpb.AssistantStreamFinal{
@@ -175,7 +180,7 @@ func streamSendLoop(responseChan <-chan usecase.ChatStreamChunk, send func(*chat
 		Reasoning:          accReasoning.String(),
 	}
 
-	return send(&chatpb.ChatResponse{
+	if err := send(&chatpb.ChatResponse{
 		Id:             lastMsgID,
 		Content:        "",
 		Role:           "assistant",
@@ -183,7 +188,16 @@ func streamSendLoop(responseChan <-chan usecase.ChatStreamChunk, send func(*chat
 		Done:           true,
 		ChunkKind:      chatpb.StreamChunkKind_STREAM_CHUNK_KIND_TEXT,
 		AssistantFinal: final,
-	})
+	}); err != nil {
+		logger.W("chat stream: op=%s session_id=%d trace_id=%q phase=final_send_err err=%v", op, sessionID, traceID, err)
+		return err
+	}
+	sendCalls++
+
+	d := time.Since(start)
+	logger.I("chat stream: op=%s session_id=%d trace_id=%q phase=done chunks_sent=%d assistant_msg_id=%d wall=%s text_runes=%d reasoning_runes=%d", op, sessionID, traceID, sendCalls, lastMsgID, d, utf8.RuneCountInString(accText.String()), utf8.RuneCountInString(accReasoning.String()))
+
+	return nil
 }
 
 type ChatHandler struct {
@@ -290,7 +304,7 @@ func (c *ChatHandler) SendMessage(req *chatpb.SendMessageRequest, stream chatpb.
 	}
 	logger.V("SendMessage: стрим ответа запущен session=%d trace_id=%s", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx))
 
-	return streamSendLoop(responseChan, stream.Send)
+	return streamSendLoop("SendMessage", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx), responseChan, stream.Send)
 }
 
 func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistantRequest, stream chatpb.ChatService_RegenerateAssistantResponseServer) error {
@@ -322,7 +336,7 @@ func (c *ChatHandler) RegenerateAssistantResponse(req *chatpb.RegenerateAssistan
 		return ToStatusError(codes.Internal, regErr)
 	}
 
-	return streamSendLoop(responseChan, stream.Send)
+	return streamSendLoop("RegenerateAssistantResponse", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx), responseChan, stream.Send)
 }
 
 func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantRequest, stream chatpb.ChatService_ContinueAssistantResponseServer) error {
@@ -357,7 +371,7 @@ func (c *ChatHandler) ContinueAssistantResponse(req *chatpb.ContinueAssistantReq
 		return ToStatusError(codes.Internal, contErr)
 	}
 
-	return streamSendLoop(responseChan, stream.Send)
+	return streamSendLoop("ContinueAssistantResponse", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx), responseChan, stream.Send)
 }
 
 func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndContinueRequest, stream chatpb.ChatService_EditUserMessageAndContinueServer) error {
@@ -395,7 +409,7 @@ func (c *ChatHandler) EditUserMessageAndContinue(req *chatpb.EditUserMessageAndC
 		}
 	}
 
-	return streamSendLoop(responseChan, stream.Send)
+	return streamSendLoop("EditUserMessageAndContinue", req.GetSessionId(), rpcmeta.TraceIDFromContext(ctx), responseChan, stream.Send)
 }
 
 func (c *ChatHandler) GetUserMessageEdits(ctx context.Context, req *chatpb.GetUserMessageEditsRequest) (*chatpb.GetUserMessageEditsResponse, error) {

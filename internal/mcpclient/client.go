@@ -388,10 +388,17 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 		attempts = 2
 	}
 
-	logger.D("MCP CallTool: server_id=%d name=%q tool=%q args_json_bytes=%d attempts_max=%d pool=%v", serverID, strings.TrimSpace(srv.Name), mcpToolName, argBytes, attempts, useHTTPSessionPool(ctx, srv))
+	srvName := ""
+	if srv != nil {
+		srvName = strings.TrimSpace(srv.Name)
+	}
+	logger.I("MCP CallTool: phase=start server_id=%d server_name=%q tool=%q args_bytes=%d attempts_max=%d http_pool=%t", serverID, srvName, mcpToolName, argBytes, attempts, useHTTPSessionPool(ctx, srv))
 
 	var err error
 	for attempt := 0; attempt < attempts; attempt++ {
+		if attempt > 0 {
+			logger.I("MCP CallTool: phase=retry server_id=%d tool=%q attempt=%d/%d", serverID, mcpToolName, attempt+1, attempts)
+		}
 		err = callToolSessionRunner(ctx, srv, nc, func(cctx context.Context, session *mcp.ClientSession) error {
 			var args any
 			if len(arguments) > 0 {
@@ -404,6 +411,7 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 				args = map[string]any{}
 			}
 
+			logger.I("MCP CallTool: phase=invoke server_id=%d tool=%q", serverID, mcpToolName)
 			res, err := callToolInvoker(cctx, session, &mcp.CallToolParams{
 				Name:      mcpToolName,
 				Arguments: args,
@@ -416,6 +424,8 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 			if res != nil && res.IsError {
 				callErr = errors.New(strings.TrimSpace(result))
 			}
+			isErr := res != nil && res.IsError
+			logger.I("MCP CallTool: phase=response server_id=%d tool=%q is_mcp_error=%v reply_bytes=%d", serverID, mcpToolName, isErr, len(result))
 
 			return nil
 		})
@@ -430,20 +440,20 @@ func CallTool(ctx context.Context, srv *domain.MCPServer, mcpToolName string, ar
 	}
 
 	if err != nil {
-		logger.W("MCP CallTool: server_id=%d tool=%q итог=transport_err err=%v", serverID, mcpToolName, err)
+		logger.W("MCP CallTool: phase=finish server_id=%d tool=%q outcome=transport_err duration=%s err=%v", serverID, mcpToolName, time.Since(started), err)
 		recordCallToolTransportErr()
 		recordCallToolServer(serverID, "transport_err")
 		return "", err
 	}
 
 	if callErr != nil {
-		logger.W("MCP CallTool: server_id=%d tool=%q итог=mcp_is_error длина_ответа=%d", serverID, mcpToolName, len(result))
+		logger.W("MCP CallTool: phase=finish server_id=%d tool=%q outcome=mcp_error duration=%s reply_bytes=%d err=%v", serverID, mcpToolName, time.Since(started), len(result), callErr)
 		recordCallToolMCPError()
 		recordCallToolServer(serverID, "mcp_error")
 		return result, callErr
 	}
 
-	logger.D("MCP CallTool: server_id=%d tool=%q итог=ok длина_ответа=%d", serverID, mcpToolName, len(result))
+	logger.I("MCP CallTool: phase=finish server_id=%d tool=%q outcome=ok duration=%s reply_bytes=%d", serverID, mcpToolName, time.Since(started), len(result))
 	recordCallToolOK()
 	recordCallToolServer(serverID, "ok")
 	return result, nil

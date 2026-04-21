@@ -340,7 +340,7 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	c.injectWebSearchAndMCP(ctx, genParams, settings, userId, sessionId)
 
 	messagesForLLM := make([]*domain.Message, 0, len(messages)+1)
-	messagesForLLM = append(messagesForLLM, c.llmChatSystemMessage(ctx, sessionId, settings, userId))
+	messagesForLLM = append(messagesForLLM, c.llmChatSystemMessage(ctx, sessionId, settings, userId, genParams))
 	messagesForLLM = append(messagesForLLM, messages...)
 
 	if err := c.hydrateAttachmentsForRunner(ctx, messagesForLLM); err != nil {
@@ -351,6 +351,7 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 	messagesForLLM, editHistoryNotice = c.capLLMHistoryTokens(ctx, messagesForLLM, 1, sessionId, resolvedModel, runnerAddr, true)
 
 	if genParams != nil && len(genParams.Tools) > 0 {
+		logger.I("EditUserMessageAndContinue: phase=branch_tool_loop session_id=%d user_id=%d runner=%q model=%q tools=%d history_notice=%t", sessionId, userId, runnerAddr, resolvedModel, len(genParams.Tools), editHistoryNotice)
 		return c.sendMessageWithToolLoop(ctx, userId, sessionId, runnerAddr, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams, editHistoryNotice, nil)
 	}
 	if settings != nil {
@@ -370,6 +371,13 @@ func (c *ChatUseCase) EditUserMessageAndContinue(ctx context.Context, userId int
 
 	messageID := assistantMsg.Id
 
+	logger.I("EditUserMessageAndContinue: phase=branch_plain_llm_stream session_id=%d user_id=%d runner=%q model=%q tools=%d message_id=%d",
+		sessionId, userId, runnerAddr, resolvedModel, func() int {
+			if genParams == nil {
+				return 0
+			}
+			return len(genParams.Tools)
+		}(), messageID)
 	responseChan, err := c.llmRepo.SendMessageOnRunner(ctx, runnerAddr, sessionId, resolvedModel, messagesForLLM, stopSequences, timeoutSeconds, genParams)
 	if err != nil {
 		return nil, err

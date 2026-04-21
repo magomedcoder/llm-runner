@@ -28,7 +28,7 @@ func TestStreamSendLoop_AssistantFinalAccumulatesTextAndReasoning(t *testing.T) 
 	}()
 
 	var got []*chatpb.ChatResponse
-	err := streamSendLoop(ch, func(r *chatpb.ChatResponse) error {
+	err := streamSendLoop("test", 0, "", ch, func(r *chatpb.ChatResponse) error {
 		got = append(got, r)
 		return nil
 	})
@@ -81,7 +81,7 @@ func TestStreamSendLoop_EmitsToolStatusChunks(t *testing.T) {
 	}()
 
 	var got []*chatpb.ChatResponse
-	err := streamSendLoop(ch, func(r *chatpb.ChatResponse) error {
+	err := streamSendLoop("test", 0, "", ch, func(r *chatpb.ChatResponse) error {
 		got = append(got, r)
 		return nil
 	})

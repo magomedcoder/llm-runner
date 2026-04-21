@@ -24,10 +24,11 @@ type sendPromptAssemblyInput struct {
 	attachmentContents       [][]byte
 	fileRAG                  *SendMessageFileRAGOptions
 	preferFullDocumentIfFits bool
+	genParams                *domain.GenerationParams
 }
 
 func (c *ChatUseCase) buildSendPromptAssembly(ctx context.Context, in sendPromptAssemblyInput) ([]*domain.Message, *ragStreamMeta, error) {
-	systemPolicy := c.llmChatSystemMessage(ctx, in.sessionID, in.settings, in.userID)
+	systemPolicy := c.llmChatSystemMessage(ctx, in.sessionID, in.settings, in.userID, in.genParams)
 	systemAndHistory := make([]*domain.Message, 0, len(in.history)+1)
 	systemAndHistory = append(systemAndHistory, systemPolicy)
 	systemAndHistory = append(systemAndHistory, in.history...)

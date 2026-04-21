@@ -231,7 +231,7 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 		return "", fmt.Errorf("MCP недоступен")
 	}
 
-	logger.D("MCP toolMCP: session_id=%d server_id=%d tool=%q params_json_bytes=%d", sessionID, serverID, mcpToolName, len(params))
+	logger.I("MCP toolMCP: phase=enter session_id=%d server_id=%d tool=%q params_bytes=%d", sessionID, serverID, mcpToolName, len(params))
 	if p := strings.TrimSpace(string(params)); p != "" {
 		const maxLog = 512
 		if utf8.RuneCountInString(p) > maxLog {
@@ -293,9 +293,9 @@ func (c *ChatUseCase) toolMCP(ctx context.Context, sessionID int64, serverID int
 		out, err := mcpclient.CallTool(toolCtx, srv, mcpToolName, params, c.mcpToolsListCache)
 		d := time.Since(t0)
 		if err != nil {
-			logger.W("MCP: вызов инструмента сессия=%d server_id=%d инструмент=%q длительность=%s ошибка=%v", sessionID, serverID, mcpToolName, d, err)
+			logger.W("MCP toolMCP: phase=mcp_transport session_id=%d server_id=%d tool=%q duration=%s err=%v", sessionID, serverID, mcpToolName, d, err)
 		} else {
-			logger.I("MCP: вызов инструмента сессия=%d server_id=%d инструмент=%q длительность=%s ответ_bytes=%d", sessionID, serverID, mcpToolName, d, len(out))
+			logger.I("MCP toolMCP: phase=mcp_transport session_id=%d server_id=%d tool=%q duration=%s reply_bytes=%d", sessionID, serverID, mcpToolName, d, len(out))
 		}
 
 		return out, err

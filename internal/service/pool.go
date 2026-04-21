@@ -637,6 +637,13 @@ func (p *Pool) SendMessageWithRunnerToolAction(
 		return nil, nil, err
 	}
 
+	nTools := 0
+	if genParams != nil {
+		nTools = len(genParams.Tools)
+	}
+
+	logger.I("Runner pool: phase=tool_stream_start session_id=%d model=%q runner=%q tools=%d msgs=%d", sessionID, model, addr, nTools, len(messages))
+
 	ai := p.getOrCreateInflight(addr)
 	ai.Add(1)
 	ch, toolFn, err := client.SendMessageWithRunnerToolAction(ctx, sessionID, model, messages, stopSequences, timeoutSeconds, genParams)
@@ -698,6 +705,13 @@ func (p *Pool) SendMessageWithRunnerToolActionOnRunner(
 	if err != nil {
 		return nil, nil, err
 	}
+
+	nTools := 0
+	if genParams != nil {
+		nTools = len(genParams.Tools)
+	}
+
+	logger.I("Runner pool: phase=tool_stream_start session_id=%d model=%q runner=%q tools=%d msgs=%d (explicit runner)", sessionID, model, runnerAddr, nTools, len(messages))
 
 	ai := p.getOrCreateInflight(runnerAddr)
 	ai.Add(1)
