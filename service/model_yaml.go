@@ -322,17 +322,22 @@ func normalizeManifestGGUFRefs(modelsDir string, cp *ModelYAML) error {
 }
 
 func addManifestCatalogEntries(dir string, seen map[string]struct{}) error {
-	entries, err := os.ReadDir(dir)
-	if err != nil {
-		return err
-	}
+	dir = filepath.Clean(dir)
 
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
+	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
 
-		name := e.Name()
+		if d.IsDir() {
+			if d.Name() == ".git" {
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
+		name := d.Name()
 		low := strings.ToLower(name)
 		var stem string
 		switch {
@@ -341,33 +346,44 @@ func addManifestCatalogEntries(dir string, seen map[string]struct{}) error {
 		case strings.HasSuffix(low, ".yml"):
 			stem = name[:len(name)-4]
 		default:
-			continue
+			return nil
 		}
 
 		if stem == "" {
-			continue
+			return nil
 		}
 
-		gguf := filepath.Join(dir, stem+".gguf")
+		parent := filepath.Dir(path)
+		gguf := filepath.Join(parent, stem+".gguf")
 		if _, err := os.Stat(gguf); err == nil {
-			continue
+			return nil
 		}
 
-		data, err := os.ReadFile(filepath.Join(dir, name))
+		data, err := os.ReadFile(path)
 		if err != nil {
-			continue
+			return nil
 		}
 
 		cfg, err := parseModelYAML(data)
 		if err != nil || strings.TrimSpace(cfg.From) == "" {
-			continue
+			return nil
 		}
 
-		seen[stem] = struct{}{}
-		if b, tg, ok := splitStemToTagged(stem); ok {
+		relDir, err := filepath.Rel(dir, parent)
+		if err != nil {
+			return nil
+		}
+
+		relStem := stem
+		if relDir != "." {
+			relStem = filepath.Join(relDir, stem)
+		}
+
+		seen[relStem] = struct{}{}
+		if b, tg, ok := splitStemToTagged(relStem); ok {
 			seen[b+":"+tg] = struct{}{}
 		}
-	}
 
-	return nil
+		return nil
+	})
 }

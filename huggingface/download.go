@@ -7,20 +7,24 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	"github.com/magomedcoder/gen-runner/service"
+	"golang.org/x/sync/errgroup"
 )
 
 type Options struct {
-	RepoID    string
-	File      string
-	Revision  string
-	Token     string
-	ListOnly  bool
-	OutDir    string
-	AsRef     string
-	LogOutput io.Writer
-	Context   context.Context
+	RepoID      string
+	File        string
+	Revision    string
+	Token       string
+	ListOnly    bool
+	OutDir      string
+	AsRef       string
+	LogOutput   io.Writer
+	Context     context.Context
+	Concurrency int
+	progressMu  *sync.Mutex
 }
 
 func logf(opts Options, format string, args ...any) {
@@ -33,6 +37,10 @@ func logf(opts Options, format string, args ...any) {
 }
 
 func formatBytes(n int64) string {
+	if n < 0 {
+		return "?"
+	}
+
 	const unit = 1024
 	if n < unit {
 		return fmt.Sprintf("%d B", n)
@@ -55,9 +63,38 @@ func optsContext(opts Options) context.Context {
 	return context.Background()
 }
 
+func effectiveParallelDownload(requested, nFiles int) int {
+	if nFiles <= 1 {
+		return 1
+	}
+
+	if requested == 1 {
+		return 1
+	}
+
+	limit := 4
+	if requested > 1 {
+		limit = requested
+	}
+
+	if limit > 8 {
+		limit = 8
+	}
+
+	if limit > nFiles {
+		limit = nFiles
+	}
+
+	return limit
+}
+
 func downloadFile(opts Options, client *Client, repoID, revision, filename, outDir string) error {
 	ctx := optsContext(opts)
 	dstPath := filepath.Join(outDir, filename)
+	if err := os.MkdirAll(filepath.Dir(dstPath), 0o755); err != nil {
+		return err
+	}
+
 	f, err := os.Create(dstPath)
 	if err != nil {
 		return err
@@ -65,14 +102,18 @@ func downloadFile(opts Options, client *Client, repoID, revision, filename, outD
 
 	defer f.Close()
 
-	logf(opts, "Скачиваю %s ...\n", filename)
-	n, err := client.Download(ctx, repoID, revision, filename, f)
+	dp := newDownloadProgress(opts.LogOutput, filename, opts.progressMu)
+	n, total, err := client.Download(ctx, repoID, revision, filename, f, dp.report)
+	dp.finish(n, total)
 	if err != nil {
 		_ = os.Remove(dstPath)
 		return err
 	}
 
-	logf(opts, "  %s - %s\n", filename, formatBytes(n))
+	if n == 0 {
+		_ = os.Remove(dstPath)
+		return fmt.Errorf("%s: пустой ответ", filename)
+	}
 
 	return nil
 }
@@ -102,11 +143,15 @@ func Run(opts Options) error {
 		return fmt.Errorf("в репозитории нет .gguf файлов")
 	}
 
+	modelDir := filepath.Join(opts.OutDir, RepoDownloadSubdir(opts.RepoID))
+
 	if opts.ListOnly {
 		logf(opts, "Доступные .gguf файлы:\n")
 		for _, name := range ggufFiles {
 			logf(opts, " %s\n", name)
 		}
+
+		logf(opts, "После скачивания файлы будут в: %s\n", modelDir)
 
 		return nil
 	}
@@ -127,28 +172,56 @@ func Run(opts Options) error {
 		}
 	}
 
-	if err := os.MkdirAll(opts.OutDir, 0o755); err != nil {
-		return fmt.Errorf("каталог %s: %w", opts.OutDir, err)
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		return fmt.Errorf("каталог %s: %w", modelDir, err)
 	}
+
+	logf(opts, "Каталог модели: %s\n", modelDir)
 
 	asTrim := strings.TrimSpace(opts.AsRef)
 	if asTrim != "" && len(toDownload) != 1 {
 		return fmt.Errorf("-as допустим только при одном файле (укажите -file)")
 	}
 
-	for _, name := range toDownload {
-		if err := ctx.Err(); err != nil {
+	conc := effectiveParallelDownload(opts.Concurrency, len(toDownload))
+	if conc > 1 {
+		logf(opts, "Параллельных загрузок: %d\n", conc)
+		var mu sync.Mutex
+		opts.progressMu = &mu
+
+		g, gctx := errgroup.WithContext(ctx)
+		g.SetLimit(conc)
+
+		for _, name := range toDownload {
+			name := name
+			g.Go(func() error {
+				o := opts
+				o.Context = gctx
+				if err := downloadFile(o, client, opts.RepoID, opts.Revision, name, modelDir); err != nil {
+					return fmt.Errorf("%s: %w", name, err)
+				}
+
+				return nil
+			})
+		}
+
+		if err := g.Wait(); err != nil {
 			return err
 		}
+	} else {
+		for _, name := range toDownload {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 
-		if err := downloadFile(opts, client, opts.RepoID, opts.Revision, name, opts.OutDir); err != nil {
-			return fmt.Errorf("%s: %w", name, err)
+			if err := downloadFile(opts, client, opts.RepoID, opts.Revision, name, modelDir); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
+			}
 		}
+	}
 
-		if asTrim == "" {
-			continue
-		}
-
+	if asTrim != "" && len(toDownload) == 1 {
+		name := toDownload[0]
 		base, tag := service.SplitModelRef(asTrim)
 		if base == "" {
 			return fmt.Errorf("-as: укажите имя, например phi-3:Q4_K_M")
@@ -161,8 +234,8 @@ func Run(opts Options) error {
 			newName = fmt.Sprintf("%s-%s.gguf", base, tag)
 		}
 
-		oldPath := filepath.Join(opts.OutDir, name)
-		newPath := filepath.Join(opts.OutDir, newName)
+		oldPath := filepath.Join(modelDir, name)
+		newPath := filepath.Join(modelDir, newName)
 		if filepath.Clean(oldPath) != filepath.Clean(newPath) {
 			if err := os.Rename(oldPath, newPath); err != nil {
 				return fmt.Errorf("переименование в %s: %w", newName, err)

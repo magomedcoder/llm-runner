@@ -9,36 +9,66 @@ import (
 	"unicode"
 )
 
-func DisplayModelName(filename string) string {
-	base := filepath.Base(filename)
-	if len(base) > 5 && strings.EqualFold(base[len(base)-5:], ".gguf") {
-		return base[:len(base)-5]
+// DisplayModelName возвращает отображаемое имя: для весов в подкаталоге - папка/стем без .gguf
+func DisplayModelName(relPath string) string {
+	p := filepath.Clean(relPath)
+	base := filepath.Base(p)
+	if len(base) <= 5 || !strings.EqualFold(base[len(base)-5:], ".gguf") {
+		return base
 	}
 
-	return base
+	stem := base[:len(base)-5]
+	d := filepath.Dir(p)
+	if d == "." {
+		return stem
+	}
+
+	return filepath.Join(d, stem)
 }
 
-func ListGGUFBasenames(dir string) ([]string, error) {
-	entries, err := os.ReadDir(dir)
+// ListGGUFRelPaths рекурсивно собирает относительные пути всех .gguf от корня dir
+func ListGGUFRelPaths(dir string) ([]string, error) {
+	dir = filepath.Clean(dir)
+	var out []string
+
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() {
+			if d.Name() == ".git" && path != dir {
+				return filepath.SkipDir
+			}
+
+			return nil
+		}
+
+		if !strings.EqualFold(filepath.Ext(d.Name()), ".gguf") {
+			return nil
+		}
+
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+
+		out = append(out, rel)
+
+		return nil
+	})
 	if err != nil {
 		return nil, err
-	}
-
-	var out []string
-	for _, e := range entries {
-		if e.IsDir() {
-			continue
-		}
-
-		name := e.Name()
-		if strings.EqualFold(filepath.Ext(name), ".gguf") {
-			out = append(out, name)
-		}
 	}
 
 	sort.Strings(out)
 
 	return out, nil
+}
+
+// ListGGUFBasenames совместимое имя: возвращает относительные пути .gguf (рекурсивно), не только basename
+func ListGGUFBasenames(dir string) ([]string, error) {
+	return ListGGUFRelPaths(dir)
 }
 
 func SplitModelRef(userInput string) (name, tag string) {
@@ -136,13 +166,41 @@ func ResolveGGUFFile(modelsDir, userInput string) (canonical string, err error) 
 	}
 
 	refName, refTag := SplitModelRef(raw)
+
 	if refTag != "" && !strings.EqualFold(refTag, "latest") {
-		candName := fmt.Sprintf("%s-%s.gguf", refName, refTag)
-		if c, err := matchGGUFBasename(modelsDir, candName); err == nil && c != "" {
+		candRel := filepath.Clean(strings.ReplaceAll(
+			fmt.Sprintf("%s-%s.gguf", refName, refTag),
+			"/",
+			string(filepath.Separator),
+		))
+
+		full := filepath.Join(modelsDir, candRel)
+		if fi, e := os.Stat(full); e == nil && !fi.IsDir() && strings.EqualFold(filepath.Ext(candRel), ".gguf") {
+			return candRel, nil
+		}
+
+		if c, err := matchGGUFBasename(modelsDir, filepath.Base(candRel)); err == nil && c != "" {
 			return c, nil
 		}
 
 		return "", fmt.Errorf("модель %q не найдена", userInput)
+	}
+
+	if refTag == "" || strings.EqualFold(refTag, "latest") {
+		relTry := filepath.Clean(strings.ReplaceAll(refName, "/", string(filepath.Separator)))
+		if relTry != "." {
+			full := filepath.Join(modelsDir, relTry)
+			if fi, e := os.Stat(full); e == nil && !fi.IsDir() {
+				if strings.EqualFold(filepath.Ext(relTry), ".gguf") {
+					return relTry, nil
+				}
+			}
+
+			fullGGUF := filepath.Join(modelsDir, relTry+".gguf")
+			if fi, e := os.Stat(fullGGUF); e == nil && !fi.IsDir() {
+				return relTry + ".gguf", nil
+			}
+		}
 	}
 
 	base := filepath.Base(raw)
@@ -158,7 +216,12 @@ func ResolveGGUFFile(modelsDir, userInput string) (canonical string, err error) 
 	try := filepath.Join(modelsDir, lookup)
 	if st, e := os.Stat(try); e == nil && !st.IsDir() {
 		if strings.EqualFold(filepath.Ext(lookup), ".gguf") {
-			return filepath.Base(lookup), nil
+			rel, err := filepath.Rel(modelsDir, try)
+			if err != nil {
+				return filepath.Clean(lookup), nil
+			}
+
+			return rel, nil
 		}
 	}
 
@@ -199,26 +262,58 @@ func ResolveGGUFFile(modelsDir, userInput string) (canonical string, err error) 
 		}
 	}
 
+	for _, name := range files {
+		st := DisplayModelName(name)
+		if filepath.Base(st) == lookup || strings.EqualFold(filepath.Base(st), lookup) {
+			return name, nil
+		}
+	}
+
 	return "", fmt.Errorf("модель %q не найдена", userInput)
 }
 
-func matchGGUFBasename(modelsDir, wantBase string) (string, error) {
+func matchGGUFBasename(modelsDir, want string) (string, error) {
+	want = filepath.Clean(strings.ReplaceAll(strings.TrimSpace(want), "/", string(filepath.Separator)))
 	files, err := ListGGUFBasenames(modelsDir)
 	if err != nil {
 		return "", err
 	}
 
+	var hits []string
 	for _, name := range files {
-		if name == wantBase {
-			return name, nil
+		if name == want || strings.EqualFold(name, want) {
+			hits = append(hits, name)
+
+			continue
+		}
+
+		if filepath.Base(name) == want || strings.EqualFold(filepath.Base(name), want) {
+			hits = append(hits, name)
 		}
 	}
 
-	for _, name := range files {
-		if strings.EqualFold(name, wantBase) {
-			return name, nil
+	keyed := make(map[string]string, len(hits))
+	for _, h := range hits {
+		k := strings.ToLower(filepath.Clean(h))
+		keyed[k] = h
+	}
+
+	if len(keyed) == 1 {
+		for _, v := range keyed {
+			return v, nil
 		}
 	}
 
-	return "", fmt.Errorf("в каталоге моделей %q нет файла .gguf с базовым именем %q (проверьте имя файла и расширение .gguf)", modelsDir, wantBase)
+	if len(keyed) > 1 {
+		all := make([]string, 0, len(keyed))
+		for _, v := range keyed {
+			all = append(all, v)
+		}
+
+		sort.Strings(all)
+
+		return "", fmt.Errorf("несколько файлов подходят под %q: %v", want, all)
+	}
+
+	return "", fmt.Errorf("в каталоге моделей %q нет файла .gguf с именем %q (проверьте имя файла и расширение .gguf)", modelsDir, want)
 }

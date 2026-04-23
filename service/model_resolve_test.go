@@ -14,6 +14,35 @@ func TestDisplayModelName(t *testing.T) {
 	if g := DisplayModelName("LOWER.GGUF"); g != "LOWER" {
 		t.Fatalf("DisplayModelName: получено %q, ожидалось LOWER", g)
 	}
+
+	sub := filepath.Join("org", "repo", "w.gguf")
+	if g := DisplayModelName(sub); g != filepath.Join("org", "repo", "w") {
+		t.Fatalf("DisplayModelName nested: получено %q", g)
+	}
+}
+
+func TestResolveGGUFFile_nested(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "org", "repo")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	p := filepath.Join(sub, "w.gguf")
+	if err := os.WriteFile(p, []byte{0}, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rel := filepath.Join("org", "repo", "w.gguf")
+	got, err := ResolveGGUFFile(dir, rel)
+	if err != nil || got != rel {
+		t.Fatalf("ResolveGGUFFile nested by path: %q err=%v", got, err)
+	}
+
+	got2, err := ResolveGGUFFile(dir, "w")
+	if err != nil || got2 != rel {
+		t.Fatalf("ResolveGGUFFile nested by stem: %q err=%v", got2, err)
+	}
 }
 
 func TestResolveGGUFFile(t *testing.T) {

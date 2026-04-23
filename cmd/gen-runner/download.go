@@ -39,6 +39,12 @@ func cmdDownload() *cli.Command {
 				Name:  "as",
 				Usage: "сохранить как base:tag -> base-tag.gguf",
 			},
+			&cli.IntFlag{
+				Name:    "parallel",
+				Aliases: []string{"j"},
+				Value:   0,
+				Usage:   "параллельных загрузок при нескольких .gguf: 0=авто (до 4), 1=по очереди, 2–8=лимит",
+			},
 		},
 		Action: runDownload,
 	}
@@ -56,12 +62,13 @@ func runDownload(_ context.Context, cmd *cli.Command) error {
 	}
 
 	return huggingface.Run(huggingface.Options{
-		RepoID:   cmd.String("repo"),
-		File:     cmd.String("file"),
-		Revision: cmd.String("revision"),
-		Token:    cmd.String("token"),
-		ListOnly: cmd.Bool("list"),
-		AsRef:    cmd.String("as"),
-		OutDir:   outDir,
+		RepoID:      cmd.String("repo"),
+		File:        cmd.String("file"),
+		Revision:    cmd.String("revision"),
+		Token:       cmd.String("token"),
+		ListOnly:    cmd.Bool("list"),
+		AsRef:       cmd.String("as"),
+		OutDir:      outDir,
+		Concurrency: cmd.Int("parallel"),
 	})
 }
