@@ -1,0 +1,251 @@
+syntax = "proto3";
+
+package runner;
+
+import "common.proto";
+
+option go_package = "github.com/magomedcoder/gen/api/pb/runnerpb;runnerpb";
+
+service RunnerService {
+  rpc GetRunners(common.Empty) returns (GetRunnersResponse);
+
+  rpc GetUserRunners(common.Empty) returns (GetUserRunnersResponse);
+
+  rpc CreateRunner(CreateRunnerRequest) returns (common.Empty);
+
+  rpc UpdateRunner(UpdateRunnerRequest) returns (common.Empty);
+
+  rpc DeleteRunner(DeleteRunnerRequest) returns (common.Empty);
+
+  rpc GetRunnersStatus(common.Empty) returns (GetRunnersStatusResponse);
+
+  rpc GetRunnerModels(GetRunnerModelsRequest) returns (GetRunnerModelsResponse);
+
+  rpc RunnerLoadModel(RunnerLoadModelRequest) returns (common.Empty);
+
+  rpc RunnerUnloadModel(RunnerUnloadModelRequest) returns (common.Empty);
+
+  rpc RunnerResetMemory(RunnerResetMemoryRequest) returns (common.Empty);
+
+  rpc GetWebSearchSettings(common.Empty) returns (WebSearchSettingsResponse);
+
+  rpc UpdateWebSearchSettings(UpdateWebSearchSettingsRequest) returns (WebSearchSettingsResponse);
+
+  rpc GetWebSearchAvailability(common.Empty) returns (WebSearchAvailabilityResponse);
+
+  rpc ListMCPServers(common.Empty) returns (ListMCPServersResponse);
+
+  rpc CreateMCPServer(CreateMCPServerRequest) returns (MCPServer);
+
+  rpc UpdateMCPServer(UpdateMCPServerRequest) returns (MCPServer);
+
+  rpc DeleteMCPServer(DeleteMCPServerRequest) returns (common.Empty);
+
+  rpc ListUserMCPServers(common.Empty) returns (ListMCPServersResponse);
+
+  rpc CreateUserMCPServer(CreateMCPServerRequest) returns (MCPServer);
+
+  rpc UpdateUserMCPServer(UpdateMCPServerRequest) returns (MCPServer);
+
+  rpc DeleteUserMCPServer(DeleteMCPServerRequest) returns (common.Empty);
+
+  rpc ProbeUserMCPServer(GetMCPServerRequest) returns (MCPProbeResult);
+
+  rpc ProbeMCPServer(GetMCPServerRequest) returns (MCPProbeResult);
+}
+
+message CreateRunnerRequest {
+  string name = 1;
+  string host = 2;
+  int32 port = 3;
+  bool enabled = 4;
+  string selected_model = 5;
+}
+
+message UpdateRunnerRequest {
+  int64 id = 1;
+  string name = 2;
+  string host = 3;
+  int32 port = 4;
+  bool enabled = 5;
+  string selected_model = 6;
+}
+
+message DeleteRunnerRequest {
+  int64 id = 1;
+}
+
+message GpuInfo {
+  string name = 1;
+  int32 temperature_c = 2;
+  uint64 memory_total_mb = 3;
+  uint64 memory_used_mb = 4;
+  uint32 utilization_percent = 5;
+}
+
+message ServerInfo {
+  string hostname = 1;
+  string os = 2;
+  string arch = 3;
+  int32 cpu_cores = 4;
+  uint64 memory_total_mb = 5;
+  repeated string models = 6;
+}
+
+message LoadedModelStatus {
+  bool loaded = 1;
+  string display_name = 2;
+  string gguf_basename = 3;
+}
+
+message RunnerInfo {
+  string address = 1;
+  bool enabled = 2;
+  bool connected = 3;
+  repeated GpuInfo gpus = 4;
+  ServerInfo server_info = 5;
+  string name = 6;
+  LoadedModelStatus loaded_model = 7;
+  int64 id = 8;
+  string host = 9;
+  int32 port = 10;
+  string selected_model = 11;
+}
+
+message GetRunnersResponse {
+  repeated RunnerInfo runners = 1;
+}
+
+message UserRunnerInfo {
+  string address = 1;
+  string name = 2;
+  string selected_model = 3;
+}
+
+message GetUserRunnersResponse {
+  repeated UserRunnerInfo runners = 1;
+}
+
+message GetRunnersStatusResponse {
+  bool has_active_runners = 1;
+}
+
+message GetRunnerModelsRequest {
+  int64 runner_id = 1;
+}
+
+message GetRunnerModelsResponse {
+  repeated string models = 1;
+}
+
+message RunnerLoadModelRequest {
+  int64 runner_id = 1;
+  string model = 2;
+}
+
+message RunnerUnloadModelRequest {
+  int64 runner_id = 1;
+}
+
+message RunnerResetMemoryRequest {
+  int64 runner_id = 1;
+}
+
+message WebSearchSettings {
+  bool enabled = 1;
+  reserved 2;
+  int32 max_results = 3;
+  string brave_api_key = 4;
+  string google_api_key = 5;
+  string google_search_engine_id = 6;
+  string yandex_user = 7;
+  string yandex_key = 8;
+  bool yandex_enabled = 9;
+  bool google_enabled = 10;
+  bool brave_enabled = 11;
+}
+
+message WebSearchSettingsResponse {
+  WebSearchSettings settings = 1;
+}
+
+message WebSearchAvailabilityResponse {
+  bool globally_enabled = 1;
+}
+
+message UpdateWebSearchSettingsRequest {
+  bool enabled = 1;
+  reserved 2;
+  int32 max_results = 3;
+  string brave_api_key = 4;
+  string google_api_key = 5;
+  string google_search_engine_id = 6;
+  string yandex_user = 7;
+  string yandex_key = 8;
+  optional bool yandex_enabled = 9;
+  optional bool google_enabled = 10;
+  optional bool brave_enabled = 11;
+}
+
+message MCPServer {
+  int64 id = 1;
+  string name = 2;
+  bool enabled = 3;
+  string transport = 4;
+  string command = 5;
+  repeated string args = 6;
+  map<string, string> env = 7;
+  string url = 8;
+  map<string, string> headers = 9;
+  int32 timeout_seconds = 10;
+  int32 owner_user_id = 11;
+}
+
+message ListMCPServersResponse {
+  repeated MCPServer servers = 1;
+}
+
+message GetMCPServerRequest {
+  int64 id = 1;
+}
+
+message CreateMCPServerRequest {
+  string name = 1;
+  bool enabled = 2;
+  string transport = 3;
+  string command = 4;
+  repeated string args = 5;
+  map<string, string> env = 6;
+  string url = 7;
+  map<string, string> headers = 8;
+  int32 timeout_seconds = 9;
+}
+
+message UpdateMCPServerRequest {
+  int64 id = 1;
+  string name = 2;
+  bool enabled = 3;
+  string transport = 4;
+  string command = 5;
+  repeated string args = 6;
+  map<string, string> env = 7;
+  string url = 8;
+  map<string, string> headers = 9;
+  int32 timeout_seconds = 10;
+}
+
+message DeleteMCPServerRequest {
+  int64 id = 1;
+}
+
+message MCPProbeResult {
+  bool ok = 1;
+  string error_message = 2;
+  string protocol_version = 3;
+  string server_name = 4;
+  string server_version = 5;
+  string instructions = 6;
+  bool has_tools = 7;
+  bool has_resources = 8;
+  bool has_prompts = 9;
+}

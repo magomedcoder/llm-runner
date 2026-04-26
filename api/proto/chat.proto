@@ -1,0 +1,328 @@
+syntax = "proto3";
+
+package chat;
+
+import "common.proto";
+
+option go_package = "github.com/magomedcoder/gen/api/pb/chatpb;chatpb";
+
+service ChatService {
+  rpc CheckConnection(common.Empty) returns (ConnectionResponse);
+
+  rpc GetSelectedRunner(common.Empty) returns (SelectedRunnerResponse);
+
+  rpc SetSelectedRunner(SetSelectedRunnerRequest) returns (common.Empty);
+
+  rpc SendMessage(SendMessageRequest) returns (stream ChatResponse);
+
+  rpc RegenerateAssistantResponse(RegenerateAssistantRequest) returns (stream ChatResponse);
+
+  rpc ContinueAssistantResponse(ContinueAssistantRequest) returns (stream ChatResponse);
+
+  rpc EditUserMessageAndContinue(EditUserMessageAndContinueRequest) returns (stream ChatResponse);
+
+  rpc GetUserMessageEdits(GetUserMessageEditsRequest) returns (GetUserMessageEditsResponse);
+
+  rpc GetSessionMessagesForUserMessageVersion(GetSessionMessagesForUserMessageVersionRequest) returns (GetSessionMessagesResponse);
+
+  rpc GetAssistantMessageRegenerations(GetAssistantMessageRegenerationsRequest) returns (GetAssistantMessageRegenerationsResponse);
+
+  rpc GetSessionMessagesForAssistantMessageVersion(GetSessionMessagesForAssistantMessageVersionRequest) returns (GetSessionMessagesResponse);
+
+  rpc CreateSession(CreateSessionRequest) returns (ChatSession);
+
+  rpc GetSessions(GetSessionsRequest) returns (GetSessionsResponse);
+
+  rpc GetSessionMessages(GetSessionMessagesRequest) returns (GetSessionMessagesResponse);
+
+  rpc DeleteSession(DeleteSessionRequest) returns (common.Empty);
+
+  rpc UpdateSessionTitle(UpdateSessionTitleRequest) returns (ChatSession);
+
+  rpc GetSessionSettings(GetSessionSettingsRequest) returns (SessionSettings);
+
+  rpc UpdateSessionSettings(UpdateSessionSettingsRequest) returns (SessionSettings);
+
+  rpc PutSessionFile(PutSessionFileRequest) returns (PutSessionFileResponse);
+
+  rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
+
+  rpc GetSessionFile(GetSessionFileRequest) returns (GetSessionFileResponse);
+
+  rpc DownloadVoskModel(VoskModelDownloadRequest) returns (stream VoskModelChunk);
+}
+
+message ConnectionResponse {
+  bool is_connected = 1;
+}
+
+message ChatMessage {
+  int64 id = 1;
+  string content = 2;
+  string role = 3;
+  int64 created_at = 4;
+  optional string attachment_name = 5;
+  optional bytes attachment_content = 6;
+  optional string tool_call_id = 7;
+  optional string tool_name = 8;
+  optional string tool_calls_json = 9;
+  optional int64 attachment_file_id = 10;
+  int64 updated_at = 11;
+  optional string attachment_mime = 12;
+}
+
+enum StreamChunkKind {
+  STREAM_CHUNK_KIND_TEXT = 0;
+  STREAM_CHUNK_KIND_TOOL_STATUS = 1;
+  STREAM_CHUNK_KIND_NOTICE = 2;
+  STREAM_CHUNK_KIND_REASONING = 3;
+  STREAM_CHUNK_KIND_RAG_META = 4;
+}
+
+message AssistantStreamFinal {
+  int64 assistant_message_id = 1;
+  string text = 2;
+  string reasoning = 3;
+}
+
+message RagChunkPreview {
+  int32 chunk_index = 1;
+  double score = 2;
+  bool is_neighbor = 3;
+  string heading_path = 4;
+  int32 pdf_page_start = 5;
+  int32 pdf_page_end = 6;
+  string excerpt = 7;
+}
+
+message RagSourcesPayload {
+  string mode = 1;
+  int64 file_id = 2;
+  int32 top_k = 3;
+  int32 neighbor_window = 4;
+  int32 deep_rag_map_calls = 5;
+  int32 dropped_by_budget = 6;
+  string full_document_excerpt = 7;
+  repeated RagChunkPreview chunks = 8;
+}
+
+message ChatResponse {
+  int64 id = 1;
+  string content = 2;
+  string role = 3;
+  int64 created_at = 4;
+  bool done = 5;
+  StreamChunkKind chunk_kind = 6;
+  optional string tool_name = 7;
+  optional string rag_mode = 8;
+  optional string rag_sources_json = 9;
+  optional AssistantStreamFinal assistant_final = 10;
+  optional RagSourcesPayload rag_sources = 11;
+}
+
+message SendMessageRequest {
+  int64 session_id = 1;
+  string text = 2;
+  optional int64 attachment_file_id = 3;
+  bool use_file_rag = 4;
+  int32 file_rag_top_k = 5;
+  string file_rag_embed_model = 6;
+  bool file_rag_force_vector = 7;
+  repeated int64 attachment_file_ids = 8;
+}
+
+message RegenerateAssistantRequest {
+  int64 session_id = 1;
+  int64 assistant_message_id = 2;
+}
+
+message ContinueAssistantRequest {
+  int64 session_id = 1;
+  int64 assistant_message_id = 2;
+}
+
+message EditUserMessageAndContinueRequest {
+  int64 session_id = 1;
+  int64 user_message_id = 2;
+  string new_content = 3;
+}
+
+message GetUserMessageEditsRequest {
+  int64 session_id = 1;
+  int64 user_message_id = 2;
+}
+
+message UserMessageEdit {
+  int64 id = 1;
+  int64 message_id = 2;
+  int64 created_at = 3;
+  string old_content = 4;
+  string new_content = 5;
+}
+
+message GetUserMessageEditsResponse {
+  repeated UserMessageEdit edits = 1;
+}
+
+message GetSessionMessagesForUserMessageVersionRequest {
+  int64 session_id = 1;
+  int64 user_message_id = 2;
+  int32 version_index = 3;
+}
+
+message GetAssistantMessageRegenerationsRequest {
+  int64 session_id = 1;
+  int64 assistant_message_id = 2;
+}
+
+message AssistantMessageRegeneration {
+  int64 id = 1;
+  int64 message_id = 2;
+  int64 created_at = 3;
+  string old_content = 4;
+  string new_content = 5;
+}
+
+message GetAssistantMessageRegenerationsResponse {
+  repeated AssistantMessageRegeneration regenerations = 1;
+}
+
+message GetSessionMessagesForAssistantMessageVersionRequest {
+  int64 session_id = 1;
+  int64 assistant_message_id = 2;
+  int32 version_index = 3;
+}
+
+message ChatSession {
+  int64 id = 1;
+  string title = 2;
+  int64 created_at = 3;
+  int64 updated_at = 4;
+}
+
+message GetSessionsRequest {
+  int32 page = 1;
+  int32 page_size = 2;
+}
+
+message GetSessionsResponse {
+  repeated ChatSession sessions = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+}
+
+message CreateSessionRequest {
+  string title = 1;
+}
+
+message GetSessionMessagesRequest {
+  int64 session_id = 1;
+  int32 page = 2;
+  int32 page_size = 3;
+  int64 before_message_id = 4;
+}
+
+message GetSessionMessagesResponse {
+  repeated ChatMessage messages = 1;
+  int32 total = 2;
+  int32 page = 3;
+  int32 page_size = 4;
+  bool has_more_older = 5;
+}
+
+message DeleteSessionRequest {
+  int64 session_id = 1;
+}
+
+message UpdateSessionTitleRequest {
+  int64 session_id = 1;
+  string title = 2;
+}
+
+message GetSessionSettingsRequest {
+  int64 session_id = 1;
+}
+
+message UpdateSessionSettingsRequest {
+  int64 session_id = 1;
+  string system_prompt = 2;
+  repeated string stop_sequences = 3;
+  int32 timeout_seconds = 4;
+  optional float temperature = 5;
+  optional int32 top_k = 6;
+  optional float top_p = 7;
+  string profile = 11;
+  bool model_reasoning_enabled = 12;
+  bool web_search_enabled = 13;
+  string web_search_provider = 14;
+  bool mcp_enabled = 15;
+  repeated int64 mcp_server_ids = 16;
+}
+
+message SessionSettings {
+  int64 session_id = 1;
+  string system_prompt = 2;
+  repeated string stop_sequences = 3;
+  int32 timeout_seconds = 4;
+  optional float temperature = 5;
+  optional int32 top_k = 6;
+  optional float top_p = 7;
+  string profile = 11;
+  bool model_reasoning_enabled = 12;
+  bool web_search_enabled = 13;
+  string web_search_provider = 14;
+  bool mcp_enabled = 15;
+  repeated int64 mcp_server_ids = 16;
+}
+
+message SelectedRunnerResponse {
+  string runner = 1;
+}
+
+message SetSelectedRunnerRequest {
+  string runner = 1;
+}
+
+message PutSessionFileRequest {
+  int64 session_id = 1;
+  string filename = 2;
+  bytes content = 3;
+  int32 ttl_seconds = 4;
+}
+
+message PutSessionFileResponse {
+  int64 file_id = 1;
+}
+
+message GetIngestionStatusRequest {
+  int64 session_id = 1;
+  int64 file_id = 2;
+}
+
+message GetIngestionStatusResponse {
+  string status = 1;
+  string last_error = 2;
+  int32 chunk_count = 3;
+  string source_content_sha256 = 4;
+  string pipeline_version = 5;
+  string embedding_model = 6;
+}
+
+message GetSessionFileRequest {
+  int64 session_id = 1;
+  int64 file_id = 2;
+}
+
+message GetSessionFileResponse {
+  string filename = 1;
+  bytes content = 2;
+}
+
+message VoskModelDownloadRequest {
+  string model_id = 1;
+}
+
+message VoskModelChunk {
+  bytes data = 1;
+}

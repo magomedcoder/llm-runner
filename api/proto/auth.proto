@@ -1,0 +1,63 @@
+syntax = "proto3";
+
+package auth;
+
+import "common.proto";
+
+option go_package = "github.com/magomedcoder/gen/api/pb/authpb;authpb";
+
+service AuthService {
+  rpc Login(LoginRequest) returns (LoginResponse);
+
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+
+  rpc CheckVersion(CheckVersionRequest) returns (CheckVersionResponse);
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  common.User user = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  string access_token = 2;
+  string refresh_token = 3;
+}
+
+message LogoutRequest {}
+
+message LogoutResponse {
+  bool success = 1;
+}
+
+message ChangePasswordRequest {
+  string old_password = 1;
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {
+  bool success = 1;
+}
+
+message CheckVersionRequest {
+  int32 client_build = 1;
+}
+
+message CheckVersionResponse {
+  bool compatible = 1;
+  string message = 2;
+}

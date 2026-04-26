@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package editor;
+
+import "common.proto";
+
+option go_package = "github.com/magomedcoder/gen/api/pb/editorpb;editorpb";
+
+service EditorService {
+  rpc Transform(TransformRequest) returns (TransformResponse);
+
+  rpc SaveHistory(SaveHistoryRequest) returns (common.Empty);
+}
+
+enum TransformType {
+  TRANSFORM_TYPE_UNSPECIFIED = 0;
+  TRANSFORM_TYPE_FIX = 1;
+  TRANSFORM_TYPE_IMPROVE = 2;
+  TRANSFORM_TYPE_BEAUTIFY = 3;
+  TRANSFORM_TYPE_PARAPHRASE = 4;
+  TRANSFORM_TYPE_SHORTEN = 5;
+  TRANSFORM_TYPE_SIMPLIFY = 6;
+  TRANSFORM_TYPE_MAKE_COMPLEX = 7;
+  TRANSFORM_TYPE_MORE_FORMAL = 8;
+  TRANSFORM_TYPE_MORE_CASUAL = 9;
+}
+
+message TransformRequest {
+  string text = 1;
+  TransformType type = 2;
+  bool preserve_markdown = 3;
+}
+
+message TransformResponse {
+  string text = 1;
+}
+
+message SaveHistoryRequest {
+  string text = 1;
+  string runner = 2;
+}

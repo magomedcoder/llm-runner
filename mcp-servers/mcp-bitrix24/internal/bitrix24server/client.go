@@ -1,0 +1,129 @@
+package bitrix24server
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"net/url"
+	"strings"
+	"time"
+	"unicode/utf8"
+
+	"golang.org/x/text/encoding/charmap"
+)
+
+type bitrixClient struct {
+	baseURL    *url.URL
+	httpClient *http.Client
+}
+
+func newBitrixClient(baseURL string, timeout time.Duration) (*bitrixClient, error) {
+	trimmed := strings.TrimSpace(baseURL)
+	if trimmed == "" {
+		return nil, fmt.Errorf("B24_WEBHOOK_BASE is empty")
+	}
+
+	trimmed = strings.TrimSuffix(trimmed, "/")
+	u, err := url.Parse(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("invalid B24_WEBHOOK_BASE: %w", err)
+	}
+
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("B24_WEBHOOK_BASE must start with http:// or https://")
+	}
+
+	if u.Host == "" {
+		return nil, fmt.Errorf("B24_WEBHOOK_BASE host is empty")
+	}
+
+	return &bitrixClient{
+		baseURL: u,
+		httpClient: &http.Client{
+			Timeout: timeout,
+		},
+	}, nil
+}
+
+func (c *bitrixClient) call(ctx context.Context, method string, payload map[string]any) (map[string]any, error) {
+	method = strings.TrimSpace(method)
+	if method == "" {
+		return nil, fmt.Errorf("method is empty")
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return nil, fmt.Errorf("marshal payload: %w", err)
+	}
+
+	endpoint := *c.baseURL
+	endpoint.Path = strings.TrimSuffix(endpoint.Path, "/") + "/" + method
+	log.Printf("[b24-mcp] http method=%q url=%s payload_bytes=%d", method, endpoint.String(), len(body))
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		log.Printf("[b24-mcp] http method=%q request_err=%v", method, err)
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 5<<20))
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+	raw = normalizeResponseEncoding(raw)
+	log.Printf("[b24-mcp] http method=%q status=%d response_bytes=%d", method, resp.StatusCode, len(raw))
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		log.Printf("[b24-mcp] http method=%q non_2xx status=%d body=%s", method, resp.StatusCode, truncateForLog(string(raw), 600))
+		return nil, fmt.Errorf("bitrix http status %d: %s", resp.StatusCode, string(raw))
+	}
+
+	var response map[string]any
+	if err := json.Unmarshal(raw, &response); err != nil {
+		log.Printf("[b24-mcp] http method=%q decode_json_err=%v body=%s", method, err, truncateForLog(string(raw), 600))
+		return nil, fmt.Errorf("decode json: %w", err)
+	}
+
+	if errObj, ok := response["error"]; ok {
+		desc, _ := response["error_description"].(string)
+		log.Printf("[b24-mcp] http method=%q api_error=%v desc=%q", method, errObj, desc)
+		return nil, fmt.Errorf("bitrix api error: %v (%s)", errObj, desc)
+	}
+
+	log.Printf("[b24-mcp] http method=%q ok", method)
+
+	return response, nil
+}
+
+func normalizeResponseEncoding(raw []byte) []byte {
+	if len(raw) == 0 || utf8.Valid(raw) {
+		return raw
+	}
+
+	decoded, err := charmap.Windows1251.NewDecoder().Bytes(raw)
+	if err != nil || !utf8.Valid(decoded) || !json.Valid(decoded) {
+		return raw
+	}
+
+	return decoded
+}
+
+func truncateForLog(s string, maxRunes int) string {
+	if maxRunes <= 0 || utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+
+	r := []rune(s)
+	return string(r[:maxRunes]) + "...(truncated)"
+}

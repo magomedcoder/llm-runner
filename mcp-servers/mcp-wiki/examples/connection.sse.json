@@ -1,0 +1,9 @@
+{
+  "transport": "sse",
+  "command": "",
+  "args": [],
+  "env": {},
+  "url": "http://127.0.0.1:8771/",
+  "headers": {},
+  "timeoutSeconds": 180
+}
