@@ -32,12 +32,15 @@ func normApproxTok(n int) int {
 	if n <= 0 {
 		return 0
 	}
+
 	if n < 512 {
 		return 512
 	}
+
 	if n > 500_000 {
 		return 500_000
 	}
+
 	return n
 }
 
@@ -52,6 +55,7 @@ func normToolRounds(n int) int {
 	if n <= 0 {
 		return 0
 	}
+
 	return n
 }
 
@@ -59,9 +63,11 @@ func normCacheEntries(n int) int {
 	if n < 0 {
 		return 0
 	}
+
 	if n > 50_000 {
 		return 50_000
 	}
+
 	return n
 }
 
@@ -97,7 +103,9 @@ func (r *Registry) AggregateChatHints() RunnerCoreHints {
 		return FinalizeChatHints(DefaultRunnerCoreHints())
 	}
 
-	sort.Slice(pairs, func(i, j int) bool { return pairs[i].addr < pairs[j].addr })
+	sort.Slice(pairs, func(i, j int) bool {
+		return pairs[i].addr < pairs[j].addr
+	})
 
 	minPositive := func(get func(RunnerCoreHints) int) int {
 		v := math.MaxInt32
@@ -119,14 +127,20 @@ func (r *Registry) AggregateChatHints() RunnerCoreHints {
 	}
 
 	out := RunnerCoreHints{}
-	out.MaxContextTokens = minPositive(func(h RunnerCoreHints) int { return h.MaxContextTokens })
+	out.MaxContextTokens = minPositive(func(h RunnerCoreHints) int {
+		return h.MaxContextTokens
+	})
 
-	msgMin := minPositive(func(h RunnerCoreHints) int { return h.LLMHistoryMaxMessages })
+	msgMin := minPositive(func(h RunnerCoreHints) int {
+		return h.LLMHistoryMaxMessages
+	})
 	if msgMin > 0 {
 		out.LLMHistoryMaxMessages = msgMin
 	}
 
-	trMin := minPositive(func(h RunnerCoreHints) int { return h.MaxToolInvocationRounds })
+	trMin := minPositive(func(h RunnerCoreHints) int {
+		return h.MaxToolInvocationRounds
+	})
 	if trMin > 0 {
 		out.MaxToolInvocationRounds = trMin
 	}
@@ -162,6 +176,7 @@ func (r *Registry) AggregateChatHints() RunnerCoreHints {
 		if p.h.MaxContextTokens <= 0 {
 			continue
 		}
+
 		if p.h.MaxContextTokens < bottleneckCtx {
 			bottleneckCtx = p.h.MaxContextTokens
 			bottleneckIdx = i
@@ -173,6 +188,7 @@ func (r *Registry) AggregateChatHints() RunnerCoreHints {
 		out.SummaryModel = strings.TrimSpace(bh.SummaryModel)
 		out.SummaryRunnerListenAddress = strings.TrimSpace(bh.SummaryRunnerListenAddress)
 	}
+
 	if out.SummaryModel == "" {
 		for _, p := range pairs {
 			if s := strings.TrimSpace(p.h.SummaryModel); s != "" {
@@ -181,6 +197,7 @@ func (r *Registry) AggregateChatHints() RunnerCoreHints {
 			}
 		}
 	}
+
 	if out.SummaryRunnerListenAddress == "" {
 		for _, p := range pairs {
 			if s := strings.TrimSpace(p.h.SummaryRunnerListenAddress); s != "" {

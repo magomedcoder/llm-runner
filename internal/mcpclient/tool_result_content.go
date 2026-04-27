@@ -84,10 +84,12 @@ func imageAudioToLLMString(kind, mime string, data []byte) string {
 	if n == 0 {
 		return fmt.Sprintf("[%s mime=%q: пустые данные]", kind, mime)
 	}
+
 	b64 := base64.StdEncoding.EncodeToString(data)
 	if len(b64) > maxInlinedBase64Runes {
 		return fmt.Sprintf(`[%s mime=%q base64_len=%d - данные обрезаны в выдаче; полный base64 слишком велик для контекста]`, kind, mime, len(b64))
 	}
+
 	return fmt.Sprintf("[%s mime=%q base64]\n%s", kind, mime, b64)
 }
 

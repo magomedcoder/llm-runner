@@ -34,6 +34,7 @@ func (r *assistantMessageRegenerationRepository) Create(ctx context.Context, reg
 		Create(&row).Error; err != nil {
 		return err
 	}
+
 	regen.Id = row.ID
 	return nil
 }
@@ -51,6 +52,7 @@ func (r *assistantMessageRegenerationRepository) ListByMessageID(ctx context.Con
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
+
 	out := make([]*domain.AssistantMessageRegeneration, 0, len(rows))
 	for i := range rows {
 		out = append(out, &domain.AssistantMessageRegeneration{
@@ -63,5 +65,6 @@ func (r *assistantMessageRegenerationRepository) ListByMessageID(ctx context.Con
 			CreatedAt:   rows[i].CreatedAt,
 		})
 	}
+
 	return out, nil
 }

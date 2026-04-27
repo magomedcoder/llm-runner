@@ -23,14 +23,17 @@ func (r *chatSessionSettingsRepository) GetBySessionID(ctx context.Context, sess
 		SessionID:             sessionID,
 		ModelReasoningEnabled: false,
 	}
+
 	var row model.Chat
 	err := r.db.WithContext(ctx).Where("id = ?", sessionID).First(&row).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return settings, nil
 		}
+
 		return nil, err
 	}
+
 	return chatRowToSessionSettings(&row), nil
 }
 

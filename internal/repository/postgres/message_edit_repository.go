@@ -46,6 +46,7 @@ func (r *messageEditRepository) ListByMessageID(ctx context.Context, messageID i
 	if limit <= 0 {
 		limit = 50
 	}
+
 	var rows []model.MessageEdit
 	if err := r.db.WithContext(ctx).
 		Where("message_id = ? AND kind = ?", messageID, "user_edit").
@@ -54,10 +55,12 @@ func (r *messageEditRepository) ListByMessageID(ctx context.Context, messageID i
 		Find(&rows).Error; err != nil {
 		return nil, err
 	}
+
 	out := make([]*domain.MessageEdit, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageEditToDomain(&rows[i]))
 	}
+
 	return out, nil
 }
 
@@ -75,8 +78,10 @@ func messageEditToDomain(m *model.MessageEdit) *domain.MessageEdit {
 	if m.SoftDeletedFromID != nil {
 		e.SoftDeletedFrom = *m.SoftDeletedFromID
 	}
+
 	if m.SoftDeletedToID != nil {
 		e.SoftDeletedTo = *m.SoftDeletedToID
 	}
+
 	return e
 }

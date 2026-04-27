@@ -38,18 +38,23 @@ func messageModelToDomain(m *model.Message) *domain.Message {
 		UpdatedAt:        m.UpdatedAt,
 		DeletedAt:        gormDeletedAtToPtr(m.DeletedAt),
 	}
+
 	if m.ToolCallID != nil {
 		msg.ToolCallID = *m.ToolCallID
 	}
+
 	if m.ToolName != nil {
 		msg.ToolName = *m.ToolName
 	}
+
 	if m.ToolCallsJSON != nil {
 		msg.ToolCallsJSON = *m.ToolCallsJSON
 	}
+
 	if m.Attachment != nil {
 		msg.AttachmentName = m.Attachment.Filename
 	}
+
 	return msg
 }
 
@@ -76,7 +81,9 @@ func (r *messageRepository) Create(ctx context.Context, message *domain.Message)
 	if err := r.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return err
 	}
+
 	message.Id = row.ID
+
 	return nil
 }
 
@@ -114,6 +121,7 @@ func (r *messageRepository) GetBySessionId(ctx context.Context, sessionID int64,
 	for i := range rows {
 		out = append(out, messageModelToDomain(&rows[i]))
 	}
+
 	return out, int32(total), nil
 }
 
@@ -172,6 +180,7 @@ func (r *messageRepository) ListBySessionBeforeID(ctx context.Context, sessionID
 	for i := range rows {
 		out = append(out, messageModelToDomain(&rows[i]))
 	}
+
 	return out, 0, nil
 }
 
@@ -189,8 +198,10 @@ func (r *messageRepository) SessionHasOlderMessages(ctx context.Context, session
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
+
 		return false, err
 	}
+
 	return true, nil
 }
 
@@ -205,10 +216,12 @@ func (r *messageRepository) ListBySessionCreatedAtWindowIncludingDeleted(ctx con
 	if err != nil {
 		return nil, err
 	}
+
 	out := make([]*domain.Message, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageModelToDomain(&rows[i]))
 	}
+
 	return out, nil
 }
 
@@ -219,8 +232,10 @@ func (r *messageRepository) GetByID(ctx context.Context, id int64) (*domain.Mess
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
+
 		return nil, err
 	}
+
 	return messageModelToDomain(&m), nil
 }
 
@@ -234,10 +249,12 @@ func (r *messageRepository) ListMessagesWithIDLessThan(ctx context.Context, sess
 	if err != nil {
 		return nil, err
 	}
+
 	out := make([]*domain.Message, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageModelToDomain(&rows[i]))
 	}
+
 	return out, nil
 }
 
@@ -251,10 +268,12 @@ func (r *messageRepository) ListMessagesUpToID(ctx context.Context, sessionID in
 	if err != nil {
 		return nil, err
 	}
+
 	out := make([]*domain.Message, 0, len(rows))
 	for i := range rows {
 		out = append(out, messageModelToDomain(&rows[i]))
 	}
+
 	return out, nil
 }
 
@@ -268,6 +287,7 @@ func (r *messageRepository) SoftDeleteRangeAfterID(ctx context.Context, sessionI
 	if upToMessageID <= 0 {
 		return r.SoftDeleteAfterID(ctx, sessionID, afterMessageID)
 	}
+
 	return r.db.WithContext(ctx).Scopes(scopeMessageSession(sessionID)).
 		Where("id > ? AND id <= ?", afterMessageID, upToMessageID).
 		Delete(&model.Message{}).Error
@@ -283,12 +303,15 @@ func (r *messageRepository) ResetAssistantForRegenerate(ctx context.Context, ses
 			"tool_name":       nil,
 			"updated_at":      gorm.Expr("NOW()"),
 		})
+
 	if res.Error != nil {
 		return res.Error
 	}
+
 	if res.RowsAffected == 0 {
 		return errors.New("сообщение не найдено или не является ответом ассистента")
 	}
+
 	return nil
 }
 
@@ -301,8 +324,10 @@ func (r *messageRepository) MaxMessageIDInSession(ctx context.Context, sessionID
 	if err != nil {
 		return 0, err
 	}
+
 	if maxID == nil {
 		return 0, nil
 	}
+
 	return *maxID, nil
 }

@@ -25,10 +25,13 @@ func (u *userRepository) Create(ctx context.Context, user *domain.User) error {
 		Role:      int16(user.Role),
 		CreatedAt: user.CreatedAt,
 	}
+
 	if err := u.db.WithContext(ctx).Omit("UpdatedAt", "LastVisitedAt").Create(&row).Error; err != nil {
 		return err
 	}
+
 	user.Id = row.ID
+
 	return nil
 }
 
@@ -46,6 +49,7 @@ func (u *userRepository) GetById(ctx context.Context, id int) (*domain.User, err
 	if err != nil {
 		return nil, handleNotFound(err, "пользователь не найден")
 	}
+
 	return userToDomain(&row), nil
 }
 
@@ -57,6 +61,7 @@ func (u *userRepository) GetByUsername(ctx context.Context, username string) (*d
 	if err != nil {
 		return nil, handleNotFound(err, "пользователь не найден")
 	}
+
 	return userToDomain(&row), nil
 }
 
@@ -97,6 +102,7 @@ func (u *userRepository) List(ctx context.Context, page, pageSize int32) ([]*dom
 	for i := range rows {
 		out = append(out, userToDomain(&rows[i]))
 	}
+
 	return out, int32(total), nil
 }
 

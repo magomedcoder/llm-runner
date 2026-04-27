@@ -4,9 +4,8 @@
 
 - список задач (`tasks.task.list`)
 - получение задачи (`tasks.task.get`)
-- комментарии (`tasks.task.commentitem.getlist`)
+- комментарии (`task.commentitem.getlist`)
 - сводка по задаче (`b24_analyze_task`)
-- произвольный REST-вызов (`b24_call_method`)
 
 ## Переменные окружения
 
@@ -86,9 +85,8 @@ url = http://127.0.0.1:8786/
 |-------------------------|-----------------------------------------------------------------|
 | `b24_list_tasks`        | `tasks.task.list` (`filter`, `select`, `order`, `start`)        |
 | `b24_get_task`          | `tasks.task.get` (`task_id`, `select`)                          |
-| `b24_get_task_comments` | `tasks.task.commentitem.getlist` (`task_id`, `order`, `select`) |
+| `b24_get_task_comments` | `task.commentitem.getlist` (`task_id`, `order`, `select`) |
 | `b24_analyze_task`      | Сводка по задаче и комментариям (`task_id`, `include_comments`) |
-| `b24_call_method`       | Произвольный REST-метод (`method`, `params`)                    |
 
 ---
 

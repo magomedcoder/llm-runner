@@ -113,6 +113,7 @@ func cloneDeclaredResources(in []DeclaredResource) []DeclaredResource {
 	if len(in) == 0 {
 		return nil
 	}
+
 	out := make([]DeclaredResource, len(in))
 	copy(out, in)
 	return out
@@ -122,6 +123,7 @@ func cloneDeclaredPrompts(in []DeclaredPrompt) []DeclaredPrompt {
 	if len(in) == 0 {
 		return nil
 	}
+
 	out := make([]DeclaredPrompt, len(in))
 	copy(out, in)
 	return out
@@ -174,11 +176,14 @@ func (c *ToolsListCache) ListToolsCached(ctx context.Context, srv *domain.MCPSer
 			if e != nil {
 				return nil, e
 			}
+
 			return t, nil
 		})
+
 		if ferr != nil {
 			return nil, ferr
 		}
+
 		var okCast bool
 		tools, okCast = v.([]DeclaredTool)
 		if !okCast {
@@ -222,17 +227,24 @@ func (c *ToolsListCache) ListResourcesCached(ctx context.Context, srv *domain.MC
 	if c == nil {
 		return ListResources(ctx, srv)
 	}
+
 	if srv == nil {
 		return nil, errors.New("nil mcp server")
 	}
+
 	if srv.ID <= 0 {
 		return listResources(ctx, srv, nil)
 	}
+
 	if ttl <= 0 {
 		ttl = DefaultToolsListCacheTTL
 	}
+
 	fp := serverConfigFingerprint(srv)
-	key := listCacheKey{id: srv.ID, fp: fp}
+	key := listCacheKey{
+		id: srv.ID,
+		fp: fp,
+	}
 	now := time.Now()
 
 	c.mu.RLock()
@@ -257,11 +269,13 @@ func (c *ToolsListCache) ListResourcesCached(ctx context.Context, srv *domain.MC
 			if e != nil {
 				return nil, e
 			}
+
 			return r, nil
 		})
 		if err != nil {
 			return nil, err
 		}
+
 		var okCast bool
 		items, okCast = v.([]DeclaredResource)
 		if !okCast {
@@ -306,17 +320,24 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 	if c == nil {
 		return ListPrompts(ctx, srv)
 	}
+
 	if srv == nil {
 		return nil, errors.New("nil mcp server")
 	}
+
 	if srv.ID <= 0 {
 		return listPrompts(ctx, srv, nil)
 	}
+
 	if ttl <= 0 {
 		ttl = DefaultToolsListCacheTTL
 	}
+
 	fp := serverConfigFingerprint(srv)
-	key := listCacheKey{id: srv.ID, fp: fp}
+	key := listCacheKey{
+		id: srv.ID,
+		fp: fp,
+	}
 	now := time.Now()
 
 	c.mu.RLock()
@@ -341,11 +362,13 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 			if e != nil {
 				return nil, e
 			}
+
 			return p, nil
 		})
 		if err != nil {
 			return nil, err
 		}
+
 		var okCast bool
 		items, okCast = v.([]DeclaredPrompt)
 		if !okCast {
@@ -364,21 +387,26 @@ func (c *ToolsListCache) ListPromptsCached(ctx context.Context, srv *domain.MCPS
 	if c.promptsEntries == nil {
 		c.promptsEntries = make(map[listCacheKey]promptsCacheEntry)
 	}
+
 	for k, v := range c.promptsEntries {
 		if !now.Before(v.until) {
 			delete(c.promptsEntries, k)
 		}
 	}
+
 	for k := range c.promptsEntries {
 		if k.id == srv.ID && k.fp != fp {
 			delete(c.promptsEntries, k)
 		}
 	}
+
 	c.promptsEntries[key] = promptsCacheEntry{
 		items: cloneDeclaredPrompts(items),
 		until: now.Add(ttl),
 	}
+
 	logger.D("MCP cache ListPromptsCached: server_id=%d сохранено items=%d ttl=%s", srv.ID, len(items), ttl)
+
 	return cloneDeclaredPrompts(items), nil
 }
 
@@ -386,8 +414,10 @@ func (c *ToolsListCache) InvalidateServerTools(id int64) {
 	if c == nil || id <= 0 {
 		return
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	n := 0
 	for k := range c.toolEntries {
 		if k.id == id {
@@ -395,6 +425,7 @@ func (c *ToolsListCache) InvalidateServerTools(id int64) {
 			n++
 		}
 	}
+
 	if n > 0 {
 		logger.I("MCP cache invalidate tools: server_id=%d записей=%d", id, n)
 	}
@@ -404,6 +435,7 @@ func (c *ToolsListCache) InvalidateServerResources(id int64) {
 	if c == nil || id <= 0 {
 		return
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	n := 0
@@ -413,6 +445,7 @@ func (c *ToolsListCache) InvalidateServerResources(id int64) {
 			n++
 		}
 	}
+
 	if n > 0 {
 		logger.I("MCP cache invalidate resources: server_id=%d записей=%d", id, n)
 	}
@@ -422,8 +455,10 @@ func (c *ToolsListCache) InvalidateServerPrompts(id int64) {
 	if c == nil || id <= 0 {
 		return
 	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
 	n := 0
 	for k := range c.promptsEntries {
 		if k.id == id {
@@ -431,6 +466,7 @@ func (c *ToolsListCache) InvalidateServerPrompts(id int64) {
 			n++
 		}
 	}
+
 	if n > 0 {
 		logger.I("MCP cache invalidate prompts: server_id=%d записей=%d", id, n)
 	}
@@ -440,11 +476,14 @@ func (c *ToolsListCache) InvalidateServerID(id int64) {
 	if id <= 0 {
 		return
 	}
+
 	logger.I("MCP cache InvalidateServerID: server_id=%d (pool_close+cache)", id)
 	closePooledHTTPSession(id)
+
 	if c == nil {
 		return
 	}
+
 	c.InvalidateServerTools(id)
 	c.InvalidateServerResources(id)
 	c.InvalidateServerPrompts(id)

@@ -49,7 +49,7 @@ func newBitrixClient(baseURL string, timeout time.Duration) (*bitrixClient, erro
 	}, nil
 }
 
-func (c *bitrixClient) call(ctx context.Context, method string, payload map[string]any) (map[string]any, error) {
+func (c *bitrixClient) call(ctx context.Context, method string, payload any) (map[string]any, error) {
 	method = strings.TrimSpace(method)
 	if method == "" {
 		return nil, fmt.Errorf("method is empty")
@@ -63,6 +63,7 @@ func (c *bitrixClient) call(ctx context.Context, method string, payload map[stri
 	endpoint := *c.baseURL
 	endpoint.Path = strings.TrimSuffix(endpoint.Path, "/") + "/" + method
 	log.Printf("[b24-mcp] http method=%q url=%s payload_bytes=%d", method, endpoint.String(), len(body))
+	log.Printf("[b24-mcp] http method=%q request_body=%s", method, truncateForLog(prettyJSONString(body), 3000))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint.String(), bytes.NewReader(body))
 	if err != nil {
@@ -83,6 +84,7 @@ func (c *bitrixClient) call(ctx context.Context, method string, payload map[stri
 	}
 	raw = normalizeResponseEncoding(raw)
 	log.Printf("[b24-mcp] http method=%q status=%d response_bytes=%d", method, resp.StatusCode, len(raw))
+	log.Printf("[b24-mcp] http method=%q response_body=%s", method, truncateForLog(prettyJSONString(raw), 3000))
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		log.Printf("[b24-mcp] http method=%q non_2xx status=%d body=%s", method, resp.StatusCode, truncateForLog(string(raw), 600))
@@ -106,6 +108,19 @@ func (c *bitrixClient) call(ctx context.Context, method string, payload map[stri
 	return response, nil
 }
 
+func (c *bitrixClient) callTaskCommentItemGetList(ctx context.Context, taskID int, order map[string]any, filter map[string]any) (map[string]any, error) {
+	payload := struct {
+		TaskID int            `json:"TASKID"`
+		Order  map[string]any `json:"ORDER,omitempty"`
+		Filter map[string]any `json:"FILTER,omitempty"`
+	}{
+		TaskID: taskID,
+		Order:  order,
+		Filter: filter,
+	}
+	return c.call(ctx, "task.commentitem.getlist", payload)
+}
+
 func normalizeResponseEncoding(raw []byte) []byte {
 	if len(raw) == 0 || utf8.Valid(raw) {
 		return raw
@@ -126,4 +141,22 @@ func truncateForLog(s string, maxRunes int) string {
 
 	r := []rune(s)
 	return string(r[:maxRunes]) + "...(truncated)"
+}
+
+func prettyJSONString(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+
+	var parsed any
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return string(raw)
+	}
+
+	formatted, err := json.MarshalIndent(parsed, "", "  ")
+	if err != nil {
+		return string(raw)
+	}
+
+	return string(formatted)
 }

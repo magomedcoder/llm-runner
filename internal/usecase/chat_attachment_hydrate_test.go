@@ -160,8 +160,10 @@ func TestHydrateAttachmentsForRunner_loadsImageFromDisk(t *testing.T) {
 	}
 
 	path := filepath.Join(sessDir, "42_img.png")
+
 	img := image.NewNRGBA(image.Rect(0, 0, 1, 1))
 	img.Set(0, 0, color.RGBA{R: 10, G: 20, B: 30, A: 255})
+
 	var pngBuf bytes.Buffer
 	if err := png.Encode(&pngBuf, img); err != nil {
 		t.Fatal(err)

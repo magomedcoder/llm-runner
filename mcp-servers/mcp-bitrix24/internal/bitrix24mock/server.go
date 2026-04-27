@@ -112,7 +112,7 @@ func (s *Server) handleMethod(w http.ResponseWriter, r *http.Request) {
 		s.handleTaskList(w, req)
 	case "tasks.task.get":
 		s.handleTaskGet(w, req)
-	case "tasks.task.commentitem.getlist":
+	case "task.commentitem.getlist":
 		s.handleCommentList(w, req)
 	default:
 		log.Printf("[b24-mock] method=%q not_implemented", method)
@@ -150,7 +150,7 @@ func (s *Server) handleTaskList(w http.ResponseWriter, req map[string]any) {
 }
 
 func (s *Server) handleTaskGet(w http.ResponseWriter, req map[string]any) {
-	taskID := toInt(req["taskId"])
+	taskID := toInt(firstNonNil(req["taskId"], req["id"], req["TASKID"]))
 	if taskID <= 0 {
 		log.Printf("[b24-mock] tasks.task.get missing taskId")
 		writeJSON(w, http.StatusOK, map[string]any{
@@ -181,9 +181,9 @@ func (s *Server) handleTaskGet(w http.ResponseWriter, req map[string]any) {
 }
 
 func (s *Server) handleCommentList(w http.ResponseWriter, req map[string]any) {
-	taskID := toInt(req["taskId"])
+	taskID := toInt(firstNonNil(req["TASKID"], req["taskId"]))
 	if taskID <= 0 {
-		log.Printf("[b24-mock] tasks.task.commentitem.getlist missing taskId")
+		log.Printf("[b24-mock] task.commentitem.getlist missing taskId")
 		writeJSON(w, http.StatusOK, map[string]any{
 			"error":             "ERROR_REQUIRED_PARAMETER",
 			"error_description": "taskId is required",
@@ -191,12 +191,16 @@ func (s *Server) handleCommentList(w http.ResponseWriter, req map[string]any) {
 		return
 	}
 
-	order, _ := req["order"].(map[string]any)
-	selectFields := toStringSlice(req["select"])
+	order := toMap(firstNonNil(req["ORDER"], req["order"]))
+	filter := toMap(firstNonNil(req["FILTER"], req["filter"]))
+	selectFields := toStringSlice(firstNonNil(req["select"], req["SELECT"]))
 
 	items := make([]map[string]any, 0, len(s.comments[taskID]))
 	for _, comment := range s.comments[taskID] {
-		items = append(items, cloneMap(comment))
+		c := cloneMap(comment)
+		if matchesFilter(c, filter) {
+			items = append(items, c)
+		}
 	}
 
 	applyOrder(items, order)
@@ -207,7 +211,7 @@ func (s *Server) handleCommentList(w http.ResponseWriter, req map[string]any) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"result": items,
 	})
-	log.Printf("[b24-mock] tasks.task.commentitem.getlist ok taskId=%d total=%d", taskID, len(items))
+	log.Printf("[b24-mock] task.commentitem.getlist ok taskId=%d total=%d", taskID, len(items))
 }
 
 func extractMethod(path string) string {
@@ -316,6 +320,20 @@ func cloneMap(src map[string]any) map[string]any {
 	maps.Copy(dst, src)
 
 	return dst
+}
+
+func firstNonNil(values ...any) any {
+	for _, v := range values {
+		if v != nil {
+			return v
+		}
+	}
+	return nil
+}
+
+func toMap(v any) map[string]any {
+	asMap, _ := v.(map[string]any)
+	return asMap
 }
 
 func writeError(w http.ResponseWriter, status int, message string) {

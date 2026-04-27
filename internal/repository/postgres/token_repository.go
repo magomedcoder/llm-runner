@@ -27,6 +27,7 @@ func (u *userSessionRepository) Create(ctx context.Context, token *domain.Token)
 	if err := u.db.WithContext(ctx).Create(&row).Error; err != nil {
 		return err
 	}
+
 	token.Id = row.ID
 	return nil
 }
@@ -39,6 +40,7 @@ func (u *userSessionRepository) GetByToken(ctx context.Context, token string) (*
 	if err != nil {
 		return nil, handleNotFound(err, "токен не найден")
 	}
+
 	return &domain.Token{
 		Id:        row.ID,
 		UserId:    row.UserID,

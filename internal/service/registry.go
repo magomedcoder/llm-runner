@@ -33,6 +33,7 @@ func RunnerStatesFromDomain(rows []domain.Runner) []RunnerState {
 		if addr == "" {
 			continue
 		}
+
 		out = append(out, RunnerState{
 			ID:            r.ID,
 			Address:       addr,
@@ -43,6 +44,7 @@ func RunnerStatesFromDomain(rows []domain.Runner) []RunnerState {
 			SelectedModel: strings.TrimSpace(r.SelectedModel),
 		})
 	}
+
 	return out
 }
 
@@ -55,6 +57,7 @@ func NewRegistry(initial []RunnerState) *Registry {
 func (r *Registry) ReplaceAll(states []RunnerState) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	next := make(map[string]RunnerState, len(states))
 	for _, st := range states {
 		addr := strings.TrimSpace(st.Address)
@@ -64,6 +67,7 @@ func (r *Registry) ReplaceAll(states []RunnerState) {
 		st.Address = addr
 		next[addr] = st
 	}
+
 	r.runners = next
 }
 
@@ -90,9 +94,12 @@ func (r *Registry) RegisterWithNameAndHints(addr, name string, hints *RunnerCore
 			Enabled: true,
 			Hints:   hints,
 		}
+
 		logger.I("Registry: раннер зарегистрирован: %s", addr)
+
 		return
 	}
+
 	if strings.TrimSpace(name) != "" {
 		existing.Name = strings.TrimSpace(name)
 	}
@@ -116,6 +123,7 @@ func (r *Registry) Unregister(addr string) {
 func (r *Registry) GetRunners() []*runnerpb.RunnerInfo {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	out := make([]*runnerpb.RunnerInfo, 0, len(r.runners))
 	for _, state := range r.runners {
 		out = append(out, &runnerpb.RunnerInfo{
@@ -128,16 +136,19 @@ func (r *Registry) GetRunners() []*runnerpb.RunnerInfo {
 			SelectedModel: state.SelectedModel,
 		})
 	}
+
 	return out
 }
 
 func (r *Registry) DefaultRunnerListenAddress() string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	type pair struct {
 		id   int64
 		addr string
 	}
+
 	var list []pair
 	for _, st := range r.runners {
 		if !st.Enabled {
@@ -149,10 +160,15 @@ func (r *Registry) DefaultRunnerListenAddress() string {
 		}
 		list = append(list, pair{st.ID, a})
 	}
+
 	if len(list) == 0 {
 		return ""
 	}
-	sort.Slice(list, func(i, j int) bool { return list[i].id < list[j].id })
+
+	sort.Slice(list, func(i, j int) bool {
+		return list[i].id < list[j].id
+	})
+
 	return list[0].addr
 }
 
@@ -160,6 +176,7 @@ func (r *Registry) SetEnabled(addr string, enabled bool) {
 	a := strings.TrimSpace(addr)
 	r.mu.Lock()
 	defer r.mu.Unlock()
+
 	if state, ok := r.runners[a]; ok {
 		state.Enabled = enabled
 		r.runners[a] = state
@@ -169,23 +186,27 @@ func (r *Registry) SetEnabled(addr string, enabled bool) {
 func (r *Registry) HasActiveRunners() bool {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	for _, state := range r.runners {
 		if state.Enabled {
 			return true
 		}
 	}
+
 	return false
 }
 
 func (r *Registry) GetEnabledAddresses() []string {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	var out []string
 	for _, state := range r.runners {
 		if state.Enabled {
 			out = append(out, state.Address)
 		}
 	}
+
 	return out
 }
 
@@ -209,10 +230,12 @@ func (r *Registry) GetByID(id int64) (RunnerState, bool) {
 
 	r.mu.RLock()
 	defer r.mu.RUnlock()
+
 	for _, st := range r.runners {
 		if st.ID == id {
 			return st, true
 		}
 	}
+
 	return RunnerState{}, false
 }

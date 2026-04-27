@@ -79,7 +79,11 @@ func TestListToolsCoalescingReducesBurstP95(t *testing.T) {
 		defer serialMu.Unlock()
 		calls.Add(1)
 		time.Sleep(20 * time.Millisecond)
-		return []DeclaredTool{{Name: "echo"}}, nil
+		return []DeclaredTool{
+			{
+				Name: "echo",
+			},
+		}, nil
 	}
 
 	srv := &domain.MCPServer{

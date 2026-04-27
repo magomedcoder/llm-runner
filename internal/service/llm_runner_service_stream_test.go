@@ -51,21 +51,34 @@ func TestSendMessageWithRunnerToolAction_bufconn_visionRequestAndStream(t *testi
 			if len(msgs) != 1 {
 				t.Fatalf("messages: %d", len(msgs))
 			}
+
 			cm := msgs[0]
 			if cm.GetAttachmentMime() != mime {
 				t.Fatalf("AttachmentMime: %q", cm.GetAttachmentMime())
 			}
+
 			if cm.GetAttachmentName() != name {
 				t.Fatalf("AttachmentName: %q", cm.GetAttachmentName())
 			}
+
 			if string(cm.GetAttachmentContent()) != string(img) {
 				t.Fatalf("AttachmentContent len=%d", len(cm.GetAttachmentContent()))
 			}
 		},
 		chunks: []*llmrunnerpb.ChatResponse{
-			{Content: "вижу ", Done: false},
-			{Content: "png", Done: false, ToolActionJson: new(`[]`)},
-			{Content: "", Done: true},
+			{
+				Content: "вижу ",
+				Done:    false,
+			},
+			{
+				Content:        "png",
+				Done:           false,
+				ToolActionJson: new(`[]`),
+			},
+			{
+				Content: "",
+				Done:    true,
+			},
 		},
 	}
 

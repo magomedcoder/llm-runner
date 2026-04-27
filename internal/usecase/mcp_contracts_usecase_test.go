@@ -92,7 +92,11 @@ func TestRunActiveContracts(t *testing.T) {
 				return nil, errors.New("list failed")
 			}
 
-			return []mcpclient.DeclaredTool{{Name: "echo"}}, nil
+			return []mcpclient.DeclaredTool{
+				{
+					Name: "echo",
+				},
+			}, nil
 		},
 	}
 
@@ -118,7 +122,10 @@ func TestRunActiveContractsSummary(t *testing.T) {
 	uc := &MCPContractsUseCase{
 		repo: fakeMCPRepoContracts{
 			active: []*domain.MCPServer{
-				{ID: 1, Enabled: true},
+				{
+					ID:      1,
+					Enabled: true,
+				},
 			},
 		},
 		probeFn: func(_ context.Context, _ *domain.MCPServer, _ *mcpclient.ToolsListCache) (*mcpclient.ServerProbe, error) {

@@ -26,6 +26,7 @@ func (c *ChatUseCase) appendMCPLLMContext(ctx context.Context, msg *domain.Messa
 		if sid <= 0 {
 			continue
 		}
+
 		line := fmt.Sprintf("- id=%d", sid)
 		if srv, err := c.mcpServerRepo.GetByIDAccessible(ctx, sid, userID); err == nil && srv != nil {
 			if srv.Enabled {
@@ -65,6 +66,7 @@ func (c *ChatUseCase) appendResolvedToolCatalog(msg *domain.Message, genParams *
 		if name == "" {
 			name = "(без имени)"
 		}
+
 		b.WriteString("- ")
 		b.WriteString(name)
 		b.WriteByte('\n')

@@ -78,7 +78,10 @@ func TestAppendMCPLLMContextContainsMCPToolHintsWithoutGenMetaTools(t *testing.T
 	}
 
 	msg := domain.NewMessage(1, "base", domain.MessageRoleSystem)
-	st := &domain.ChatSessionSettings{MCPEnabled: true, MCPServerIDs: []int64{9}}
+	st := &domain.ChatSessionSettings{
+		MCPEnabled:   true,
+		MCPServerIDs: []int64{9},
+	}
 	c.appendMCPLLMContext(ctx, msg, st, 1)
 
 	if !strings.Contains(msg.Content, "base") {
@@ -105,7 +108,10 @@ func TestAppendMCPLLMContextDisabledNoop(t *testing.T) {
 	}
 
 	msg := domain.NewMessage(1, "x", domain.MessageRoleSystem)
-	c.appendMCPLLMContext(ctx, msg, &domain.ChatSessionSettings{MCPEnabled: false, MCPServerIDs: []int64{9}}, 1)
+	c.appendMCPLLMContext(ctx, msg, &domain.ChatSessionSettings{
+		MCPEnabled:   false,
+		MCPServerIDs: []int64{9},
+	}, 1)
 	if msg.Content != "x" {
 		t.Fatalf("при выключенном MCP не должно быть дополнения: %q", msg.Content)
 	}

@@ -13,7 +13,10 @@ type chatTransactionRunner struct {
 }
 
 func NewChatTransactionRunner(db *gorm.DB, runners domain.RunnerRepository) domain.ChatTransactionRunner {
-	return &chatTransactionRunner{db: db, runners: runners}
+	return &chatTransactionRunner{
+		db:      db,
+		runners: runners,
+	}
 }
 
 func (t *chatTransactionRunner) WithinTx(ctx context.Context, fn func(ctx context.Context, r domain.ChatRepos) error) error {

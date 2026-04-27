@@ -19,7 +19,11 @@ func forwardLLMStreamChunks(
 			select {
 			case <-ctx.Done():
 				return
-			case out <- ChatStreamChunk{Kind: StreamChunkKindReasoning, Text: chunk.ReasoningContent, MessageID: messageID}:
+			case out <- ChatStreamChunk{
+				Kind:      StreamChunkKindReasoning,
+				Text:      chunk.ReasoningContent,
+				MessageID: messageID,
+			}:
 			}
 		}
 
@@ -28,7 +32,11 @@ func forwardLLMStreamChunks(
 			select {
 			case <-ctx.Done():
 				return
-			case out <- ChatStreamChunk{Kind: StreamChunkKindText, Text: chunk.Content, MessageID: messageID}:
+			case out <- ChatStreamChunk{
+				Kind:      StreamChunkKindText,
+				Text:      chunk.Content,
+				MessageID: messageID,
+			}:
 			}
 		}
 	}

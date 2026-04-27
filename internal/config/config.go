@@ -483,6 +483,8 @@ func LoadFrom(path string) (*Config, error) {
 		panic(fmt.Sprintf("Ошибка при разборе: %v", err))
 	}
 
+	//conf.MinClientBuild = 1
+
 	return &conf, nil
 }
 

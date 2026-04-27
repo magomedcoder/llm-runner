@@ -34,9 +34,11 @@ func (r *chatPreferenceRepository) GetSelectedRunner(ctx context.Context, userID
 	if err != nil {
 		return "", err
 	}
+
 	if len(rows) == 0 {
 		return "", nil
 	}
+
 	return domain.RunnerListenAddress(rows[0].Host, rows[0].Port), nil
 }
 
@@ -48,11 +50,14 @@ func (r *chatPreferenceRepository) SetSelectedRunner(ctx context.Context, userID
 		if err != nil {
 			return err
 		}
+
 		if !ok {
 			return errors.New("раннер не найден для указанного адреса")
 		}
+
 		id = &rid
 	}
+
 	return r.db.WithContext(ctx).Model(&model.Chat{}).
 		Where("user_id = ?", userID).
 		Updates(map[string]any{

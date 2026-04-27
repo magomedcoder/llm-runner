@@ -117,6 +117,7 @@ func fileToDomain(m *model.File) *domain.File {
 	if m.MimeType != nil {
 		f.MimeType = *m.MimeType
 	}
+
 	if m.ExtractedText != nil {
 		f.ExtractedText = *m.ExtractedText
 	}

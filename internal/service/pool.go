@@ -65,8 +65,10 @@ func (p *Pool) getClient(addr string) (*LLMRunnerService, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	p.clients[addr] = c
 	p.getOrCreateInflight(addr)
+
 	return c, nil
 }
 
@@ -275,6 +277,7 @@ func (p *Pool) ProbeLLMRunner(ctx context.Context, address string) (connected bo
 	gpus = llmGpusToRunnerPB(pr.GetGpus())
 	server = llmServerToRunnerPB(pr.GetServer())
 	loaded = llmLoadedModelToRunnerPB(pr.GetLoadedModel())
+
 	return true, gpus, server, loaded
 }
 
@@ -493,6 +496,7 @@ func (p *Pool) pickRunner(ctx context.Context, model string) (*LLMRunnerService,
 			best = c
 		}
 	}
+
 	logger.V("Pool: выбран раннер %s score=%.1f model=%q", best.addr, best.score, model)
 
 	return best.client, best.addr, nil

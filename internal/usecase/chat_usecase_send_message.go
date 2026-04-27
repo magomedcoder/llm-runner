@@ -174,7 +174,10 @@ func (c *ChatUseCase) SendMessage(ctx context.Context, userId int, sessionId int
 			select {
 			case <-ctx.Done():
 				return
-			case clientChan <- ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice}:
+			case clientChan <- ChatStreamChunk{
+				Kind: StreamChunkKindNotice,
+				Text: HistoryTruncatedClientNotice,
+			}:
 			}
 		}
 

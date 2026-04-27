@@ -332,7 +332,10 @@ func (s *LLMRunnerService) sendMessageStream(
 				select {
 				case <-ctx.Done():
 					return
-				case output <- domain.LLMStreamChunk{Content: content, ReasoningContent: rc}:
+				case output <- domain.LLMStreamChunk{
+					Content:          content,
+					ReasoningContent: rc,
+				}:
 				}
 			}
 

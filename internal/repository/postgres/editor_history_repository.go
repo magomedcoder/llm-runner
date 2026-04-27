@@ -21,10 +21,12 @@ func (r *editorHistoryRepository) Save(ctx context.Context, userID int, runnerID
 	if strings.TrimSpace(text) == "" {
 		return nil
 	}
+
 	row := model.EditorTextHistory{
 		UserID:   userID,
 		RunnerID: runnerID,
 		Text:     text,
 	}
+
 	return r.db.WithContext(ctx).Omit("ID", "CreatedAt").Create(&row).Error
 }

@@ -49,8 +49,14 @@ func (l *sessionPutRateLimiter) checkPutSessionFileRate(userID int, byteLen int)
 
 	w := l.perUser[userID]
 	if w == nil || now.Sub(w.windowStart) >= putSessionFileRateWindow {
-		l.perUser[userID] = &uploadRollingWindow{windowStart: now, bytes: b, n: 1}
+		l.perUser[userID] = &uploadRollingWindow{
+			windowStart: now,
+			bytes:       b,
+			n:           1,
+		}
+
 		l.maybePruneLocked(now)
+
 		return nil
 	}
 

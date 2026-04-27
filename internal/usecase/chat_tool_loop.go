@@ -636,11 +636,13 @@ func normalizeToolActionRows(rows []cohereActionRow) ([]cohereActionRow, error) 
 		if err != nil {
 			return nil, fmt.Errorf("arguments для %q: %w", strings.TrimSpace(row.ToolName), err)
 		}
+
 		out = append(out, cohereActionRow{
 			ToolName:   strings.TrimSpace(row.ToolName),
 			Parameters: params,
 		})
 	}
+
 	return out, nil
 }
 
@@ -854,12 +856,18 @@ func (c *ChatUseCase) runChatToolLoop(
 		if err == nil {
 			return
 		}
+
 		logger.W("ChatUseCase tool-loop: session_id=%d user_id=%d phase=client_error err=%v", sessionID, userID, err)
 		s := err.Error()
 		if s == "" {
 			s = "ошибка"
 		}
-		_ = send(ChatStreamChunk{Kind: StreamChunkKindText, Text: s, MessageID: 0})
+
+		_ = send(ChatStreamChunk{
+			Kind:      StreamChunkKindText,
+			Text:      s,
+			MessageID: 0,
+		})
 	}
 	defer func() {
 		if r := recover(); r != nil {
@@ -879,7 +887,10 @@ func (c *ChatUseCase) runChatToolLoop(
 	}
 
 	if historyInitiallyTrimmed {
-		_ = send(ChatStreamChunk{Kind: StreamChunkKindNotice, Text: HistoryTruncatedClientNotice})
+		_ = send(ChatStreamChunk{
+			Kind: StreamChunkKindNotice,
+			Text: HistoryTruncatedClientNotice,
+		})
 	}
 
 	maxToolRounds := maxToolInvocationRounds(c.runnerReg)
@@ -896,15 +907,26 @@ func (c *ChatUseCase) runChatToolLoop(
 
 		raw, streamed := drainLLMStreamChannelForward(ch, func(c domain.LLMStreamChunk) bool {
 			if c.ReasoningContent != "" {
-				if !send(ChatStreamChunk{Kind: StreamChunkKindReasoning, Text: c.ReasoningContent, MessageID: 0}) {
+				if !send(ChatStreamChunk{
+					Kind:      StreamChunkKindReasoning,
+					Text:      c.ReasoningContent,
+					MessageID: 0,
+				}) {
 					return false
 				}
 			}
+
 			if c.Content != "" {
-				return send(ChatStreamChunk{Kind: StreamChunkKindText, Text: c.Content, MessageID: 0})
+				return send(ChatStreamChunk{
+					Kind:      StreamChunkKindText,
+					Text:      c.Content,
+					MessageID: 0,
+				})
 			}
+
 			return true
 		})
+
 		full := strings.TrimSpace(raw)
 		logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=llm_stream_done streamed=%t assistant_text_runes=%d", sessionID, round+1, streamed, utf8.RuneCountInString(full))
 		if full == "" {
@@ -1011,7 +1033,12 @@ func (c *ChatUseCase) runChatToolLoop(
 			st := c.toolProgressDisplayName(ctx, sessionID, call.ResolvedName, call.RequestedName)
 			logger.I("ChatUseCase tool-loop: session_id=%d round=%d phase=tool_exec_start index=%d/%d requested=%q resolved=%q display=%q", sessionID, round+1, i+1, len(execCalls), call.RequestedName, call.ResolvedName, st)
 
-			if !send(ChatStreamChunk{Kind: StreamChunkKindToolStatus, Text: "Выполняется: " + st, ToolName: st, MessageID: 0}) {
+			if !send(ChatStreamChunk{
+				Kind:      StreamChunkKindToolStatus,
+				Text:      "Выполняется: " + st,
+				ToolName:  st,
+				MessageID: 0,
+			}) {
 				return
 			}
 

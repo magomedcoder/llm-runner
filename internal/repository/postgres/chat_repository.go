@@ -40,9 +40,11 @@ func (r *chatSessionRepository) GetById(ctx context.Context, id int64) (*domain.
 	err := r.db.WithContext(ctx).
 		Where("id = ?", id).
 		First(&row).Error
+
 	if err != nil {
 		return nil, handleNotFound(err, "сессия не найдена")
 	}
+
 	return chatToDomain(&row), nil
 }
 
@@ -70,6 +72,7 @@ func (r *chatSessionRepository) GetByUserId(ctx context.Context, userID int, pag
 	for i := range rows {
 		out = append(out, chatToDomain(&rows[i]))
 	}
+
 	return out, int32(total), nil
 }
 
@@ -95,6 +98,7 @@ func chatToDomain(m *model.Chat) *domain.ChatSession {
 		v := *m.SelectedRunnerID
 		rid = &v
 	}
+
 	return &domain.ChatSession{
 		Id:               m.ID,
 		UserId:           m.UserID,

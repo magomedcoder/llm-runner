@@ -39,6 +39,7 @@ func resolveModelForUser(
 	if err != nil {
 		return "", err
 	}
+
 	available := normalizedAvailableModels(availableRaw)
 	if len(available) == 0 {
 		return "", fmt.Errorf("нет доступных моделей на активных раннерах")

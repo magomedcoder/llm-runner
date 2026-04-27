@@ -212,16 +212,20 @@ func (c *ChatUseCase) GetUserMessageEdits(ctx context.Context, userId int, sessi
 	if userMessageID <= 0 {
 		return nil, fmt.Errorf("некорректный user_message_id")
 	}
+
 	if _, err := c.verifySessionOwnership(ctx, userId, sessionId); err != nil {
 		return nil, err
 	}
+
 	target, err := c.messageRepo.GetByID(ctx, userMessageID)
 	if err != nil {
 		return nil, err
 	}
+
 	if target == nil || target.SessionId != sessionId || target.Role != domain.MessageRoleUser {
 		return nil, fmt.Errorf("сообщение не найдено")
 	}
+
 	if c.messageEditRepo == nil {
 		return []*domain.MessageEdit{}, nil
 	}
@@ -257,16 +261,20 @@ func (c *ChatUseCase) GetSessionMessagesForAssistantMessageVersion(ctx context.C
 	if assistantMessageID <= 0 {
 		return nil, fmt.Errorf("некорректный assistant_message_id")
 	}
+
 	if versionIndex < 0 {
 		return nil, fmt.Errorf("некорректный version_index")
 	}
+
 	if _, err := c.verifySessionOwnership(ctx, userId, sessionId); err != nil {
 		return nil, err
 	}
+
 	target, err := c.messageRepo.GetByID(ctx, assistantMessageID)
 	if err != nil {
 		return nil, err
 	}
+
 	if target == nil || target.SessionId != sessionId || target.Role != domain.MessageRoleAssistant {
 		return nil, fmt.Errorf("сообщение не найдено")
 	}
@@ -447,23 +455,29 @@ func (c *ChatUseCase) UpdateSessionSettings(
 	if err != nil {
 		return nil, err
 	}
+
 	if stopSequences == nil {
 		stopSequences = []string{}
 	}
+
 	if mcpServerIDs == nil {
 		mcpServerIDs = []int64{}
 	}
+
 	for _, mid := range mcpServerIDs {
 		if mid <= 0 {
 			continue
 		}
+
 		if _, err := c.mcpServerRepo.GetByIDAccessible(ctx, mid, userId); err != nil {
 			if errors.Is(err, domain.ErrNotFound) {
 				return nil, fmt.Errorf("недопустимый MCP-сервер id=%d", mid)
 			}
+
 			return nil, err
 		}
 	}
+
 	settings := &domain.ChatSessionSettings{
 		SessionID:             sessionID,
 		SystemPrompt:          strings.TrimSpace(systemPrompt),
@@ -490,10 +504,12 @@ func parseToolsJSON(raw string) []domain.Tool {
 	if trimmed == "" {
 		return nil
 	}
+
 	var tools []domain.Tool
 	if err := json.Unmarshal([]byte(trimmed), &tools); err != nil {
 		return nil
 	}
+
 	return tools
 }
 
@@ -506,9 +522,11 @@ func (c *ChatUseCase) CreateSession(ctx context.Context, userId int, title strin
 	if err != nil {
 		return nil, err
 	}
+
 	if first == nil {
 		return nil, domain.ErrNoRunners
 	}
+
 	if strings.TrimSpace(first.SelectedModel) == "" {
 		return nil, domain.ErrRunnerChatModelNotConfigured
 	}
@@ -544,6 +562,7 @@ func (c *ChatUseCase) GetSessionMessages(ctx context.Context, userId int, sessio
 	if err != nil {
 		return nil, 0, false, err
 	}
+
 	hasMoreOlder := false
 	if len(msgs) > 0 {
 		if int32(len(msgs)) < pageSize {
@@ -587,10 +606,12 @@ func (c *ChatUseCase) historyMessagesForLLM(ctx context.Context, sessionId int64
 	if c.runnerReg != nil {
 		limit = int32(c.runnerReg.AggregateChatHints().LLMHistoryMaxMessages)
 	}
+
 	raw, err := c.messageRepo.ListLatestMessagesForSession(ctx, sessionId, limit)
 	if err != nil {
 		return nil, err
 	}
+
 	return filterHistoryForLLM(raw), nil
 }
 
@@ -721,6 +742,7 @@ func (c *ChatUseCase) saveFileInSession(ctx context.Context, userID int, session
 	if err := os.MkdirAll(dir, 0755); err != nil {
 		return nil, err
 	}
+
 	sid := sessionID
 	uid := userID
 	file := domain.NewFile(baseName, "", int64(len(content)), ".")
@@ -731,14 +753,17 @@ func (c *ChatUseCase) saveFileInSession(ctx context.Context, userID int, session
 	if err := c.fileRepo.Create(ctx, file); err != nil {
 		return nil, err
 	}
+
 	storageName := fmt.Sprintf("%d_%s", file.Id, baseName)
 	storagePath := filepath.Join(dir, storageName)
 	if err := os.WriteFile(storagePath, content, 0644); err != nil {
 		return nil, err
 	}
+
 	if err := c.fileRepo.UpdateStoragePath(ctx, file.Id, storagePath); err != nil {
 		return nil, err
 	}
+
 	file.StoragePath = storagePath
 	return file, nil
 }

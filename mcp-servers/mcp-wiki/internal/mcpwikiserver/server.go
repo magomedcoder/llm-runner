@@ -556,7 +556,7 @@ func NewServerWithOptions(opts Options) *mcp.Server {
 	srv := mcp.NewServer(&mcp.Implementation{
 		Name:    "wiki-rag",
 		Title:   "MCP Wiki RAG",
-		Version: "0.1.0",
+		Version: "1.0.0",
 	}, wikiMCPServerOptions())
 
 	registerWikiModelPrompts(srv)
