@@ -132,6 +132,7 @@ func isIgnorableCommentError(err error) bool {
 	if err == nil {
 		return false
 	}
+
 	msg := strings.ToLower(err.Error())
 	return strings.Contains(msg, "task.commentitem.getlist") || strings.Contains(msg, "tasks_error_exception_#8") || strings.Contains(msg, "action_failed_to_be_processed") || strings.Contains(msg, "access denied")
 }
@@ -1129,6 +1130,7 @@ func runWorkloadSummary(ctx context.Context, client *bitrixClient, filter map[st
 			overloaded++
 		}
 	}
+
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i].Active != rows[j].Active {
 			return rows[i].Active > rows[j].Active
@@ -1535,4 +1537,534 @@ func runProjectHealth(ctx context.Context, client *bitrixClient, filter map[stri
 	}
 
 	return strings.Join(lines, "\n"), nil
+}
+
+type AnalyticsContext struct {
+	Now   time.Time
+	Items []taskAnalyticsItem
+}
+
+func buildAnalyticsContextForTaskList(ctx context.Context, client *bitrixClient, filter map[string]any, order map[string]any, start *int, limit int, includeComments bool) (*AnalyticsContext, error) {
+	now := time.Now()
+	tasks, err := loadTaskList(ctx, client, filter, order, start, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]taskAnalyticsItem, 0, len(tasks))
+	for _, task := range tasks {
+		id := numberLike(field(task, "id", "ID"))
+		if id <= 0 {
+			continue
+		}
+
+		comments := []map[string]any(nil)
+		if includeComments {
+			comments = loadTaskCommentsSoft(ctx, client, id)
+		}
+
+		items = append(items, buildAnalyticsItem(task, comments, now))
+	}
+
+	return &AnalyticsContext{
+		Now:   now,
+		Items: items,
+	}, nil
+}
+
+type BlockerSignal struct {
+	CommentID    int    `json:"comment_id"`
+	AuthorID     string `json:"author_id,omitempty"`
+	DetectedAt   string `json:"detected_at,omitempty"`
+	AgeHours     int    `json:"age_hours"`
+	Message      string `json:"message"`
+	Keyword      string `json:"keyword"`
+	SeverityHint string `json:"severity_hint"`
+}
+
+func detectBlockerSignals(comments []CommentSnapshot, now time.Time) []BlockerSignal {
+	keywords := []string{
+		"блок", "заблок", "blocked", "blocker", "waiting", "жду", "ожида", "не могу", "проблем",
+	}
+
+	out := make([]BlockerSignal, 0, len(comments))
+	for _, c := range comments {
+		msgLower := strings.ToLower(strings.TrimSpace(c.Message))
+		if msgLower == "" {
+			continue
+		}
+
+		kw := ""
+		for _, k := range keywords {
+			if strings.Contains(msgLower, k) {
+				kw = k
+				break
+			}
+		}
+
+		if kw == "" {
+			continue
+		}
+
+		detectedAt := parseBitrixTime(c.CreatedAt)
+		ageHours := 0
+		if !detectedAt.IsZero() {
+			ageHours = int(now.Sub(detectedAt).Hours())
+			if ageHours < 0 {
+				ageHours = 0
+			}
+		}
+
+		severity := "medium"
+		if ageHours >= 72 {
+			severity = "high"
+		} else if ageHours <= 24 {
+			severity = "low"
+		}
+
+		out = append(out, BlockerSignal{
+			CommentID:    c.ID,
+			AuthorID:     c.AuthorID,
+			DetectedAt:   c.CreatedAt,
+			AgeHours:     ageHours,
+			Message:      c.Message,
+			Keyword:      kw,
+			SeverityHint: severity,
+		})
+	}
+
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].AgeHours != out[j].AgeHours {
+			return out[i].AgeHours > out[j].AgeHours
+		}
+		return out[i].CommentID > out[j].CommentID
+	})
+
+	return out
+}
+
+func blockerOwners(signals []BlockerSignal) []string {
+	set := map[string]struct{}{}
+	for _, s := range signals {
+		if strings.TrimSpace(s.AuthorID) == "" {
+			continue
+		}
+		set[s.AuthorID] = struct{}{}
+	}
+
+	out := make([]string, 0, len(set))
+	for id := range set {
+		out = append(out, id)
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
+func blockerSummary(signals []BlockerSignal) string {
+	if len(signals) == 0 {
+		return "Блокеры в комментариях не обнаружены."
+	}
+	oldest := signals[0]
+	return fmt.Sprintf("Обнаружено блокеров: %d. Самый старый: %dч назад (keyword=%s).", len(signals), oldest.AgeHours, oldest.Keyword)
+}
+
+type ExecutionDriftReport struct {
+	TaskID              int     `json:"task_id"`
+	TimeEstimateSeconds int     `json:"time_estimate_seconds"`
+	TimeSpentSeconds    int     `json:"time_spent_seconds"`
+	UtilizationRatio    float64 `json:"utilization_ratio"`
+	OverrunSeconds      int     `json:"overrun_seconds"`
+	CommentsCount       int     `json:"comments_count"`
+	LastCommentAt       string  `json:"last_comment_at,omitempty"`
+	SilenceHours        int     `json:"silence_hours"`
+	DriftLevel          string  `json:"drift_level"`
+	Summary             string  `json:"summary"`
+}
+
+func buildExecutionDriftReport(task TaskSnapshot, comments []CommentSnapshot, now time.Time) ExecutionDriftReport {
+	estimate := task.TimeEstimate
+	spent := task.TimeSpent
+	ratio := 0.0
+	if estimate > 0 {
+		ratio = float64(spent) / float64(estimate)
+	}
+
+	overrun := 0
+	if spent > estimate && estimate > 0 {
+		overrun = spent - estimate
+	}
+
+	lastComment := ""
+	silenceHours := 0
+	var latest time.Time
+	for _, c := range comments {
+		t := parseBitrixTime(c.CreatedAt)
+		if t.After(latest) {
+			latest = t
+			lastComment = c.CreatedAt
+		}
+	}
+
+	if !latest.IsZero() {
+		silenceHours = int(now.Sub(latest).Hours())
+		if silenceHours < 0 {
+			silenceHours = 0
+		}
+	}
+
+	level := "low"
+	switch {
+	case (estimate > 0 && ratio >= 1.3) || silenceHours >= 96:
+		level = "high"
+	case (estimate > 0 && ratio >= 1.0) || silenceHours >= 48:
+		level = "medium"
+	}
+
+	summary := "Дрифт исполнения низкий."
+	if level == "medium" {
+		summary = "Есть признаки дрифта исполнения: нужен контроль следующего шага."
+	} else if level == "high" {
+		summary = "Высокий дрифт исполнения: требуется перепланирование и снятие блокеров."
+	}
+
+	return ExecutionDriftReport{
+		TaskID:              task.ID,
+		TimeEstimateSeconds: estimate,
+		TimeSpentSeconds:    spent,
+		UtilizationRatio:    ratio,
+		OverrunSeconds:      overrun,
+		CommentsCount:       len(comments),
+		LastCommentAt:       lastComment,
+		SilenceHours:        silenceHours,
+		DriftLevel:          level,
+		Summary:             summary,
+	}
+}
+
+func executionDriftActions(r ExecutionDriftReport) []string {
+	actions := make([]string, 0, 3)
+	if r.DriftLevel == "high" {
+		actions = append(actions, "Сделать срочное перепланирование по задаче и согласовать новый контрольный срок.")
+	}
+
+	if r.OverrunSeconds > 0 {
+		actions = append(actions, fmt.Sprintf("Уточнить оценку трудозатрат: перерасход %d сек.", r.OverrunSeconds))
+	}
+
+	if r.SilenceHours >= 48 {
+		actions = append(actions, "Запросить статус-апдейт и следующий шаг в комментариях.")
+	}
+
+	if len(actions) == 0 {
+		actions = append(actions, "Поддерживать текущий темп выполнения и регулярный апдейт статуса.")
+	}
+
+	return actions
+}
+
+type RiskScoringConfig struct {
+	OverdueWeight            int
+	NoDeadlineActiveWeight   int
+	NoCommentsStaleWeight    int
+	NoFreshCommentsWeight    int
+	BlockersWeight           int
+	EstimateOverrunWeight    int
+	NoCommentsStaleAfter     time.Duration
+	NoFreshCommentsAfter     time.Duration
+	MediumRiskScoreThreshold int
+	HighRiskScoreThreshold   int
+}
+
+type RiskInput struct {
+	Now           time.Time
+	StatusCode    int
+	CreatedAt     time.Time
+	Deadline      time.Time
+	LastComment   time.Time
+	CommentsCount int
+	HasBlockers   bool
+	TimeEstimate  int
+	TimeSpent     int
+}
+
+func defaultRiskScoringConfig() RiskScoringConfig {
+	return RiskScoringConfig{
+		OverdueWeight:            4,
+		NoDeadlineActiveWeight:   2,
+		NoCommentsStaleWeight:    2,
+		NoFreshCommentsWeight:    2,
+		BlockersWeight:           2,
+		EstimateOverrunWeight:    2,
+		NoCommentsStaleAfter:     48 * time.Hour,
+		NoFreshCommentsAfter:     72 * time.Hour,
+		MediumRiskScoreThreshold: 2,
+		HighRiskScoreThreshold:   5,
+	}
+}
+
+func evaluateRisk(input RiskInput, cfg RiskScoringConfig) (score int, riskLabel string, reasons []string) {
+	if input.Now.IsZero() {
+		input.Now = time.Now()
+	}
+	reasons = make([]string, 0, 6)
+
+	if !input.Deadline.IsZero() && input.Deadline.Before(input.Now) {
+		score += cfg.OverdueWeight
+		reasons = append(reasons, "задача уже просрочена")
+	}
+
+	isActive := input.StatusCode == 2 || input.StatusCode == 3 || input.StatusCode == 4
+	if input.Deadline.IsZero() && isActive {
+		score += cfg.NoDeadlineActiveWeight
+		reasons = append(reasons, "нет дедлайна у активной задачи")
+	}
+
+	if input.CommentsCount == 0 && !input.CreatedAt.IsZero() && input.Now.Sub(input.CreatedAt) > cfg.NoCommentsStaleAfter {
+		score += cfg.NoCommentsStaleWeight
+		reasons = append(reasons, "долгое время нет комментариев")
+	}
+
+	if !input.LastComment.IsZero() && input.Now.Sub(input.LastComment) > cfg.NoFreshCommentsAfter && input.StatusCode != 5 && input.StatusCode != 7 {
+		score += cfg.NoFreshCommentsWeight
+		reasons = append(reasons, "нет свежих коммуникаций по задаче")
+	}
+
+	if input.HasBlockers {
+		score += cfg.BlockersWeight
+		reasons = append(reasons, "в комментариях есть сигналы блокировки/ожидания")
+	}
+
+	if input.TimeEstimate > 0 && input.TimeSpent > input.TimeEstimate {
+		score += cfg.EstimateOverrunWeight
+		reasons = append(reasons, "превышена оценка времени")
+	}
+
+	if input.StatusCode == 5 || input.StatusCode == 7 {
+		score = 0
+		reasons = nil
+	}
+
+	switch {
+	case score >= cfg.HighRiskScoreThreshold:
+		riskLabel = "высокий"
+	case score >= cfg.MediumRiskScoreThreshold:
+		riskLabel = "средний"
+	default:
+		riskLabel = "низкий"
+	}
+	return score, riskLabel, reasons
+}
+
+type TaskSnapshot struct {
+	ID            int            `json:"id"`
+	Title         string         `json:"title"`
+	StatusCode    int            `json:"status_code"`
+	StatusLabel   string         `json:"status_label"`
+	CreatedAt     string         `json:"created_at,omitempty"`
+	ChangedAt     string         `json:"changed_at,omitempty"`
+	DeadlineAt    string         `json:"deadline_at,omitempty"`
+	ClosedAt      string         `json:"closed_at,omitempty"`
+	ActivityAt    string         `json:"activity_at,omitempty"`
+	CreatedBy     string         `json:"created_by,omitempty"`
+	ResponsibleID string         `json:"responsible_id,omitempty"`
+	Priority      int            `json:"priority,omitempty"`
+	TimeEstimate  int            `json:"time_estimate,omitempty"`
+	TimeSpent     int            `json:"time_spent,omitempty"`
+	Raw           map[string]any `json:"raw,omitempty"`
+}
+
+type CommentSnapshot struct {
+	ID        int            `json:"id"`
+	TaskID    int            `json:"task_id"`
+	AuthorID  string         `json:"author_id,omitempty"`
+	CreatedAt string         `json:"created_at,omitempty"`
+	Message   string         `json:"message,omitempty"`
+	Raw       map[string]any `json:"raw,omitempty"`
+}
+
+type TaskTimelineEvent struct {
+	At      string `json:"at,omitempty"`
+	Type    string `json:"type"`
+	Title   string `json:"title"`
+	Details string `json:"details,omitempty"`
+	Source  string `json:"source"`
+}
+
+func normalizeTaskSnapshot(task map[string]any) TaskSnapshot {
+	statusCode := taskStatusCode(task)
+	return TaskSnapshot{
+		ID:            taskID(task),
+		Title:         taskTitle(task),
+		StatusCode:    statusCode,
+		StatusLabel:   statusLabel(statusCode),
+		CreatedAt:     taskCreatedAtRaw(task),
+		ChangedAt:     taskChangedAtRaw(task),
+		DeadlineAt:    taskDeadlineRaw(task),
+		ClosedAt:      taskClosedAtRaw(task),
+		ActivityAt:    taskActivityAtRaw(task),
+		CreatedBy:     taskCreatedBy(task),
+		ResponsibleID: taskResponsibleID(task),
+		Priority:      taskPriority(task),
+		TimeEstimate:  taskTimeEstimate(task),
+		TimeSpent:     taskTimeSpent(task),
+		Raw:           task,
+	}
+}
+
+func normalizeCommentSnapshots(comments []map[string]any, fallbackTaskID int) []CommentSnapshot {
+	out := make([]CommentSnapshot, 0, len(comments))
+	for _, c := range comments {
+		taskID := numberLike(field(c, "taskId", "task_id", "TASK_ID"))
+		if taskID <= 0 {
+			taskID = fallbackTaskID
+		}
+
+		out = append(out, CommentSnapshot{
+			ID:        numberLike(field(c, "id", "ID")),
+			TaskID:    taskID,
+			AuthorID:  strings.TrimSpace(stringField(c, "authorId", "AUTHOR_ID")),
+			CreatedAt: strings.TrimSpace(stringField(c, "post_date", "POST_DATE", "createdDate", "CREATED_DATE", "dateCreate", "DATE_CREATE")),
+			Message:   strings.TrimSpace(stringField(c, "postMessage", "POST_MESSAGE", "message", "MESSAGE")),
+			Raw:       c,
+		})
+	}
+	return out
+}
+
+func buildTaskTimeline(task TaskSnapshot, comments []CommentSnapshot) []TaskTimelineEvent {
+	events := make([]TaskTimelineEvent, 0, 8+len(comments))
+	if task.CreatedAt != "" {
+		events = append(events, TaskTimelineEvent{
+			At:      task.CreatedAt,
+			Type:    "task_created",
+			Title:   "Задача создана",
+			Details: fmt.Sprintf("Статус: %s", task.StatusLabel),
+			Source:  "task",
+		})
+	}
+
+	if task.DeadlineAt != "" {
+		events = append(events, TaskTimelineEvent{
+			At:      task.DeadlineAt,
+			Type:    "task_deadline",
+			Title:   "Дедлайн задачи",
+			Details: task.Title,
+			Source:  "task",
+		})
+	}
+
+	if task.ChangedAt != "" {
+		events = append(events, TaskTimelineEvent{
+			At:     task.ChangedAt,
+			Type:   "task_changed",
+			Title:  "Последнее изменение задачи",
+			Source: "task",
+		})
+	}
+
+	if task.ActivityAt != "" {
+		events = append(events, TaskTimelineEvent{
+			At:     task.ActivityAt,
+			Type:   "task_activity",
+			Title:  "Последняя активность по задаче",
+			Source: "task",
+		})
+	}
+
+	if task.ClosedAt != "" {
+		events = append(events, TaskTimelineEvent{
+			At:     task.ClosedAt,
+			Type:   "task_closed",
+			Title:  "Задача закрыта",
+			Source: "task",
+		})
+	}
+
+	for _, c := range comments {
+		details := c.Message
+		if details == "" {
+			details = "Комментарий без текста"
+		}
+
+		events = append(events, TaskTimelineEvent{
+			At:      c.CreatedAt,
+			Type:    "comment_added",
+			Title:   "Добавлен комментарий",
+			Details: details,
+			Source:  "comment",
+		})
+	}
+
+	sort.SliceStable(events, func(i, j int) bool {
+		ti := parseBitrixTime(events[i].At)
+		tj := parseBitrixTime(events[j].At)
+		if ti.IsZero() && tj.IsZero() {
+			return events[i].Type < events[j].Type
+		}
+
+		if ti.IsZero() {
+			return false
+		}
+
+		if tj.IsZero() {
+			return true
+		}
+
+		return ti.After(tj)
+	})
+	return events
+}
+
+func taskID(task map[string]any) int {
+	return numberLike(field(task, "id", "ID"))
+}
+
+func taskTitle(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "title", "TITLE"))
+}
+
+func taskStatusCode(task map[string]any) int {
+	return numberLike(field(task, "status", "STATUS"))
+}
+
+func taskCreatedAtRaw(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "createdDate", "CREATED_DATE"))
+}
+
+func taskChangedAtRaw(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "changedDate", "CHANGED_DATE"))
+}
+
+func taskDeadlineRaw(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "deadline", "DEADLINE"))
+}
+
+func taskClosedAtRaw(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "closedDate", "CLOSED_DATE"))
+}
+
+func taskActivityAtRaw(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "activityDate", "ACTIVITY_DATE"))
+}
+
+func taskCreatedBy(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "createdBy", "CREATED_BY"))
+}
+
+func taskResponsibleID(task map[string]any) string {
+	return strings.TrimSpace(stringField(task, "responsibleId", "RESPONSIBLE_ID"))
+}
+
+func taskPriority(task map[string]any) int {
+	return numberLike(field(task, "priority", "PRIORITY"))
+}
+
+func taskTimeEstimate(task map[string]any) int {
+	return numberLike(field(task, "timeEstimate", "TIME_ESTIMATE"))
+}
+
+func taskTimeSpent(task map[string]any) int {
+	return numberLike(field(task, "timeSpentInLogs", "TIME_SPENT_IN_LOGS"))
 }

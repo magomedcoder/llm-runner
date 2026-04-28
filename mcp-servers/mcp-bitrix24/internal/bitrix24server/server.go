@@ -7,6 +7,8 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/magomedcoder/gen/pkg/mcpsafe"
@@ -1121,4 +1123,248 @@ func logToolResult(tool string, result any) {
 	}
 
 	log.Printf("[b24-mcp] tool=%s result=%s", tool, truncateForLog(prettyJSONString(raw), 3000))
+}
+
+type ctxKey string
+
+const requestIDKey ctxKey = "b24_request_id"
+
+var requestSeq uint64
+
+func withRequestID(ctx context.Context) (context.Context, string) {
+	if existing, ok := requestIDFromContext(ctx); ok && existing != "" {
+		return ctx, existing
+	}
+
+	seq := atomic.AddUint64(&requestSeq, 1)
+	rid := fmt.Sprintf("b24-%d-%d", time.Now().UnixMilli(), seq)
+	return context.WithValue(ctx, requestIDKey, rid), rid
+}
+
+func requestIDFromContext(ctx context.Context) (string, bool) {
+	if ctx == nil {
+		return "", false
+	}
+
+	v := ctx.Value(requestIDKey)
+	s, ok := v.(string)
+	return s, ok
+}
+
+var (
+	toolCallsTotal     uint64
+	toolErrorsTotal    uint64
+	toolLatencyUSum    uint64
+	httpCallsTotal     uint64
+	httpErrorsTotal    uint64
+	softSkipsTotal     uint64
+	telemetryStartOnce sync.Once
+)
+
+func initTelemetryReporter() {
+	telemetryStartOnce.Do(func() {
+		go func() {
+			ticker := time.NewTicker(60 * time.Second)
+			defer ticker.Stop()
+			for range ticker.C {
+				log.Printf(
+					"[b24-mcp] metrics tool_calls=%d tool_errors=%d avg_tool_latency_ms=%.2f http_calls=%d http_errors=%d soft_skips=%d",
+					atomic.LoadUint64(&toolCallsTotal),
+					atomic.LoadUint64(&toolErrorsTotal),
+					avgToolLatencyMS(),
+					atomic.LoadUint64(&httpCallsTotal),
+					atomic.LoadUint64(&httpErrorsTotal),
+					atomic.LoadUint64(&softSkipsTotal),
+				)
+			}
+		}()
+	})
+}
+
+func avgToolLatencyMS() float64 {
+	calls := atomic.LoadUint64(&toolCallsTotal)
+	if calls == 0 {
+		return 0
+	}
+
+	return float64(atomic.LoadUint64(&toolLatencyUSum)) / float64(calls) / 1000.0
+}
+
+func incHTTPCall() {
+	atomic.AddUint64(&httpCallsTotal, 1)
+}
+
+func incHTTPError() {
+	atomic.AddUint64(&httpErrorsTotal, 1)
+}
+
+func incSoftSkip() {
+	atomic.AddUint64(&softSkipsTotal, 1)
+}
+
+func validateOptionalNonNegativeInt(field string, value *int) error {
+	if value == nil {
+		return nil
+	}
+
+	if *value < 0 {
+		return fmt.Errorf("%s must be >= 0", field)
+	}
+
+	return nil
+}
+
+func validateOptionalIntRange(field string, value *int, min, max int) error {
+	if value == nil {
+		return nil
+	}
+	if *value < min || *value > max {
+		return fmt.Errorf("%s must be in range [%d..%d]", field, min, max)
+	}
+	return nil
+}
+
+func validateOptionalEnum(field, value string, allowed ...string) error {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return nil
+	}
+
+	for _, item := range allowed {
+		if value == strings.ToLower(strings.TrimSpace(item)) {
+			return nil
+		}
+	}
+
+	return fmt.Errorf("%s must be one of: %s", field, strings.Join(allowed, ", "))
+}
+
+func validateListTasksArgs(start *int, filter map[string]any) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	return validateListFilterTaskIDConsistency(filter)
+}
+
+func validateListFilterTaskIDConsistency(filter map[string]any) error {
+	if len(filter) == 0 {
+		return nil
+	}
+
+	values := make(map[string]int)
+	for _, key := range []string{"ID", "id", "=ID", "=id", "TASK_ID", "task_id", "taskId"} {
+		raw, ok := filter[key]
+		if !ok {
+			continue
+		}
+
+		taskID, err := parseTaskID(raw)
+		if err != nil || taskID <= 0 {
+			continue
+		}
+		values[key] = taskID
+	}
+
+	if len(values) <= 1 {
+		return nil
+	}
+
+	var expected int
+	for _, v := range values {
+		expected = v
+		break
+	}
+
+	for key, v := range values {
+		if v != expected {
+			return fmt.Errorf("conflicting task id filters: %q=%d conflicts with other id fields", key, v)
+		}
+	}
+
+	return nil
+}
+
+func validateAnalyzeTasksByQueryArgs(start, limit *int) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	return validateOptionalIntRange("limit", limit, 1, 50)
+}
+
+func validatePortfolioArgs(start, limit *int, groupBy string) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	if err := validateOptionalIntRange("limit", limit, 1, 50); err != nil {
+		return err
+	}
+
+	return validateOptionalEnum("group_by", groupBy, "responsible", "creator", "status")
+}
+
+func validateExecutiveSummaryArgs(start, limit, periodDays *int) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	if err := validateOptionalIntRange("limit", limit, 1, 50); err != nil {
+		return err
+	}
+
+	return validateOptionalIntRange("period_days", periodDays, 1, 30)
+}
+
+func validateSLAArgs(start, limit, soonHoursThreshold *int) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	if err := validateOptionalIntRange("limit", limit, 1, 50); err != nil {
+		return err
+	}
+
+	return validateOptionalIntRange("soon_hours_threshold", soonHoursThreshold, 1, 168)
+}
+
+func validateWorkloadArgs(start, limit, overloadTasks *int) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	if err := validateOptionalIntRange("limit", limit, 1, 50); err != nil {
+		return err
+	}
+
+	return validateOptionalIntRange("overload_tasks", overloadTasks, 1, 100)
+}
+
+func validateStatusTrendsArgs(start, limit, periodDays *int) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	if err := validateOptionalIntRange("limit", limit, 1, 50); err != nil {
+		return err
+	}
+
+	return validateOptionalIntRange("period_days", periodDays, 1, 30)
+}
+
+func validateResponsiblePerformanceArgs(start, limit *int, responsibleID string) error {
+	if err := validateOptionalNonNegativeInt("start", start); err != nil {
+		return err
+	}
+
+	if err := validateOptionalIntRange("limit", limit, 1, 50); err != nil {
+		return err
+	}
+
+	if strings.TrimSpace(responsibleID) == "" {
+		return fmt.Errorf("responsible_id is required")
+	}
+
+	return nil
 }
