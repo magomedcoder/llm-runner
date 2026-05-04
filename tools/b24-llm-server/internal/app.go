@@ -92,17 +92,21 @@ func (a *App) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if strings.TrimSpace(req.Prompt) == "" {
+	if strings.TrimSpace(req.Prompt) == "" && strings.TrimSpace(req.AnalysisMode) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt_or_mode_required"})
+		return
+	}
+
+	userPrompt := effectiveUserPrompt(req)
+	if userPrompt == "" {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "prompt_required"})
 		return
 	}
 
 	messages := []*domain.Message{
 		{
-			Role: domain.MessageRoleSystem,
-			Content: strings.TrimSpace(
-				"Ты аналитик задач Bitrix24. Отвечай структурировано и по делу. Используй контекст задачи и комментариев, отмечай риски, шаги и уточняющие вопросы.",
-			),
+			Role:    domain.MessageRoleSystem,
+			Content: strings.TrimSpace(systemPromptForAnalysisMode(req.AnalysisMode)),
 		},
 		{
 			Role:    domain.MessageRoleUser,
@@ -127,11 +131,12 @@ func (a *App) handleAnalyze(w http.ResponseWriter, r *http.Request) {
 	}
 
 	messages = append(messages, &domain.Message{
-		Role: domain.MessageRoleUser,
-		Content: req.Prompt,
+		Role:    domain.MessageRoleUser,
+		Content: userPrompt,
 	})
 
-	ch, err := a.llm.SendMessage(r.Context(), 0, a.model, messages, nil, 0, nil)
+	genParams := generationParamsFromWire(req.Generation)
+	ch, err := a.llm.SendMessage(r.Context(), 0, a.model, messages, nil, 0, genParams)
 	if err != nil {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "llm_error"})
 		return
